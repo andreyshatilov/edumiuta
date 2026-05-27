@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Filter, Phone, PhoneOff, RefreshCw, Star, Wallet, Calendar, MessageSquare } from 'lucide-react';
+import { Send, Filter, Phone, PhoneOff, RefreshCw, Star, Wallet, Calendar, Clock, Download } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import Sidebar from '../components/Sidebar';
 import { api } from '../services/api';
@@ -11,20 +11,28 @@ const TutorDashboard = () => {
     const [activeTab, setActiveTab] = useState('czat');
     const [isOnline, setIsOnline] = useState(false);
     const [totalEarnings, setTotalEarnings] = useState(0.00);
+    const [history, setHistory] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isToggling, setIsToggling] = useState(false);
     const [incomingSession, setIncomingSession] = useState(null);
     const [isRespondingCall, setIsRespondingCall] = useState(false);
     const navigate = useNavigate();
 
-    // Fetch tutor profile to load initial status and earnings
+    // Fetch tutor profile, status, earnings and history
     const loadProfileData = async () => {
         if (!user) return;
+        setIsLoading(true);
         try {
             const data = await api.fetchProfile(user.id);
             if (data && data.profile) {
                 setIsOnline(data.profile.isOnline || false);
                 setTotalEarnings(data.profile.totalEarnings || 0.00);
+            }
+
+            // Fetch history
+            const sessionHistory = await api.fetchSessionHistory(user.id);
+            if (sessionHistory) {
+                setHistory(sessionHistory);
             }
         } catch (error) {
             console.error("Error loading tutor profile:", error);
@@ -48,17 +56,15 @@ const TutorDashboard = () => {
                     setIncomingSession(activeSession);
                 }
             } catch (error) {
-                // Silently ignore 404s
+                // Ignore 404s
             }
         };
 
-        // Poll immediately and then every 3 seconds
         pollIncomingCalls();
         const interval = setInterval(pollIncomingCalls, 3000);
         return () => clearInterval(interval);
     }, [user, isOnline, incomingSession]);
 
-    // Toggle online availability status
     const handleToggleStatus = async () => {
         if (!user || isToggling) return;
         setIsToggling(true);
@@ -74,7 +80,6 @@ const TutorDashboard = () => {
         }
     };
 
-    // Accept incoming call
     const handleAcceptCall = () => {
         if (!incomingSession) return;
         navigate(`/call/${incomingSession.id}`, {
@@ -82,7 +87,6 @@ const TutorDashboard = () => {
         });
     };
 
-    // Decline/Reject incoming call
     const handleDeclineCall = async () => {
         if (!incomingSession) return;
         setIsRespondingCall(true);
@@ -91,10 +95,16 @@ const TutorDashboard = () => {
             setIncomingSession(null);
         } catch (error) {
             console.error("Error declining call:", error);
-            setIncomingSession(null); // Clear state anyway
+            setIncomingSession(null);
         } finally {
             setIsRespondingCall(false);
         }
+    };
+
+    const formatDuration = (totalSeconds) => {
+        const mins = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        return `${mins} min ${secs} sek`;
     };
 
     return (
@@ -104,10 +114,11 @@ const TutorDashboard = () => {
             <main className="flex-1 p-10 overflow-y-auto">
                 <div className="max-w-4xl mx-auto">
                     <header className="flex justify-between items-center mb-10">
-                        <h1 className="text-4xl font-black text-slate-800 capitalize tracking-tighter">{activeTab}</h1>
+                        <h1 className="text-4xl font-black text-slate-800 capitalize tracking-tighter">
+                            {activeTab === 'kalendarz' ? 'Historia lekcji' : activeTab}
+                        </h1>
                         
                         <div className="flex items-center gap-3">
-                            {/* Online availability toggle */}
                             <button
                                 onClick={handleToggleStatus}
                                 disabled={isToggling}
@@ -119,7 +130,7 @@ const TutorDashboard = () => {
                             
                             <button 
                                 onClick={loadProfileData}
-                                className="p-2.5 rounded-full bg-white hover:bg-slate-50 border border-slate-100 text-slate-400"
+                                className="p-2.5 rounded-full bg-white hover:bg-slate-50 border border-slate-100 text-slate-400 cursor-pointer"
                                 title="Odśwież"
                             >
                                 <RefreshCw size={18} />
@@ -178,6 +189,59 @@ const TutorDashboard = () => {
                                 </div>
                             </motion.div>
                         )}
+
+                        {activeTab === 'kalendarz' && (
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
+                                {isLoading ? (
+                                    <div className="flex justify-center py-10">
+                                        <RefreshCw className="animate-spin text-emerald-400" size={24} />
+                                    </div>
+                                ) : history.length === 0 ? (
+                                    <div className="bg-white p-12 rounded-[40px] text-center border border-slate-100 shadow-sm">
+                                        <p className="text-slate-400 font-bold">Brak historii lekcji. Uruchom sesję z uczniem, aby zacząć zarabiać!</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {history.map(session => (
+                                            <div key={session.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                                <div>
+                                                    <h3 className="font-black text-slate-800 text-lg">Sesja #{session.id.slice(-6)}</h3>
+                                                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">
+                                                        {new Date(session.startTime).toLocaleDateString('pl-PL')} o {new Date(session.startTime).toLocaleTimeString('pl-PL', {hour: '2-digit', minute:'2-digit'})}
+                                                    </p>
+                                                    <div className="flex items-center gap-4 mt-2">
+                                                        <span className="bg-slate-50 px-3 py-1 rounded-full text-xs font-bold text-slate-500">
+                                                            {formatDuration(session.durationSeconds || 0)}
+                                                        </span>
+                                                        <span className="bg-emerald-50 px-3 py-1 rounded-full text-xs font-bold text-emerald-600">
+                                                            {(session.tutorRate || 1.50).toFixed(2)} PLN / min
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                                                    <div className="text-right">
+                                                        <p className="text-[10px] text-slate-400 font-bold uppercase">Zarobek</p>
+                                                        <p className="font-mono text-xl font-black text-emerald-500">{(session.cost || 0).toFixed(2)} PLN</p>
+                                                    </div>
+                                                    
+                                                    {session.recordingUrl && (
+                                                        <a 
+                                                            href={session.recordingUrl} 
+                                                            target="_blank" 
+                                                            rel="noopener noreferrer"
+                                                            className="p-3 bg-slate-900 text-white rounded-2xl hover:bg-emerald-500 transition-colors shadow-sm flex items-center justify-center gap-2 text-xs font-bold"
+                                                        >
+                                                            <Download size={14} /> Nagranie
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </motion.div>
+                        )}
                     </AnimatePresence>
                 </div>
             </main>
@@ -192,7 +256,6 @@ const TutorDashboard = () => {
                             exit={{ scale: 0.9, opacity: 0 }}
                             className="bg-white text-slate-900 w-full max-w-md rounded-[50px] p-10 text-center shadow-2xl relative overflow-hidden"
                         >
-                            {/* Pulse background effect */}
                             <div className="absolute inset-0 bg-emerald-400/5 animate-pulse -z-10"></div>
                             
                             <div className="w-24 h-24 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce">

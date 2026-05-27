@@ -21,10 +21,6 @@ if (!FLOTIQ_API_KEY || FLOTIQ_API_KEY === 'your_flotiq_rw_api_key_here') {
   process.exit(1);
 }
 
-if (!DAILY_API_KEY || DAILY_API_KEY === 'your_daily_co_api_key_here') {
-  console.warn('⚠️ Ostrzeżenie: Brak klucza DAILY_API_KEY. Video call pokoje będą miały fallback na Jitsi Meet.');
-}
-
 app.use(cors());
 app.use(express.json());
 
@@ -222,6 +218,13 @@ app.post('/api/session/end', async (req, res) => {
     session.endTime = endTime;
     session.durationSeconds = durationSeconds;
     session.cost = cost;
+    if (session.dailyRoomUrl && !session.dailyRoomUrl.includes('meet.jit.si')) {
+      // Mock/Link to Daily cloud recording if Daily API was used
+      session.recordingUrl = `https://api.daily.co/v1/recordings/rec_${sessionId}`;
+    } else {
+      // Fallback
+      session.recordingUrl = `https://meet.jit.si/${sessionId}`;
+    }
     await flotiqClient.put(`/tutor_session/${sessionId}`, session);
 
     // Fetch and update Student Wallet
@@ -368,6 +371,69 @@ app.post('/api/wallet/deposit', async (req, res) => {
   } catch (error) {
     console.error('Error depositing to wallet in Flotiq:', error.response?.data || error.message);
     res.status(500).json({ error: 'Failed to deposit' });
+  }
+});
+
+// 10. GET Fetch completed session history for a user
+app.get('/api/session/history/:clerkId', async (req, res) => {
+  const { clerkId } = req.params;
+  try {
+    // Query completed sessions where user is student
+    const studentQuery = encodeURIComponent(JSON.stringify({
+      studentClerkId: { type: 'equals', filter: clerkId },
+      status: { type: 'equals', filter: 'completed' }
+    }));
+    const studentRes = await flotiqClient.get(`/tutor_session?filters=${studentQuery}`);
+    
+    // Query completed sessions where user is tutor
+    const tutorQuery = encodeURIComponent(JSON.stringify({
+      tutorClerkId: { type: 'equals', filter: clerkId },
+      status: { type: 'equals', filter: 'completed' }
+    }));
+    const tutorRes = await flotiqClient.get(`/tutor_session?filters=${tutorQuery}`);
+
+    const history = [
+      ...(studentRes.data.data || []),
+      ...(tutorRes.data.data || [])
+    ].sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+
+    res.json(history);
+  } catch (error) {
+    console.error('Error fetching session history from Flotiq:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to fetch session history' });
+  }
+});
+
+// 11. POST Seed database with sample tutors for presentation demo
+app.post('/api/db/seed', async (req, res) => {
+  const sampleTutors = [
+    { clerkId: 'demo_tutor_1', name: 'Dr. Jan Kowalski', university: 'SGH w Warszawie', subject: 'Mikroekonomia', bio: 'Wykładowca akademicki z 15-letnim stażem. Tłumaczę trudne koncepcje w prosty, intuicyjny sposób. Specjalizuję się w teorii gier i monopolu.', pricePerMinute: 2.20, imageUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&fit=crop&q=80', isOnline: true, rating: 4.9, reviewsCount: 142 },
+    { clerkId: 'demo_tutor_2', name: 'Karolina Wiśniewska', university: 'UE w Krakowie', subject: 'Ekonometria', bio: 'Absolwentka Analityki Gospodarczej. Pomagam w projektach z Gretla, R i Pythona. Testy heteroskedastyczności i autokorelacji nie będą już problemem!', pricePerMinute: 1.80, imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&fit=crop&q=80', isOnline: true, rating: 4.8, reviewsCount: 96 },
+    { clerkId: 'demo_tutor_3', name: 'Mgr Michał Mazur', university: 'UE we Wrocławiu', subject: 'Rachunkowość', bio: 'Certyfikowany księgowy. Bilans, rachunek zysków i strat, księgowanie operacji gospodarczych. Szybkie powtórki przed kolokwiami.', pricePerMinute: 1.90, imageUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&fit=crop&q=80', isOnline: true, rating: 5.0, reviewsCount: 78 },
+    { clerkId: 'demo_tutor_4', name: 'Anna Wójcik', university: 'Uniwersytet Warszawski', subject: 'Statystyka', bio: 'Studentka ostatniego roku matematyki finansowej. Prawdopodobieństwo, testy hipotez statystycznych, przedziały ufności.', pricePerMinute: 1.50, imageUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&fit=crop&q=80', isOnline: true, rating: 4.7, reviewsCount: 112 },
+    { clerkId: 'demo_tutor_5', name: 'Tomasz Lewandowski', university: 'Akademia Leona Koźmińskiego', subject: 'Finanse', bio: 'Praktyk rynków finansowych, analityk w funduszu inwestycyjnym. Pomagam w wycenie instrumentów, analizie wskaźnikowej i corporate finance.', pricePerMinute: 2.50, imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&fit=crop&q=80', isOnline: true, rating: 4.9, reviewsCount: 54 }
+  ];
+
+  try {
+    const createdTutors = [];
+    for (const tutor of sampleTutors) {
+      // Check if tutor already exists
+      const filter = encodeURIComponent(JSON.stringify({ clerkId: { type: 'equals', filter: tutor.clerkId } }));
+      const checkRes = await flotiqClient.get(`/tutor_profile?filters=${filter}`);
+      
+      if (checkRes.data.data && checkRes.data.data.length > 0) {
+        // Already exists, skip
+        continue;
+      }
+      
+      // Create profile
+      const response = await flotiqClient.post('/tutor_profile', tutor);
+      createdTutors.push(response.data);
+    }
+    res.json({ message: `Successfully seeded ${createdTutors.length} sample tutors.`, tutors: createdTutors });
+  } catch (error) {
+    console.error('Error seeding database:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to seed database' });
   }
 });
 

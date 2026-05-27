@@ -76,5 +76,17 @@ export const api = {
   depositFunds: async (clerkId, amount) => {
     const response = await apiClient.post('/wallet/deposit', { clerkId, amount });
     return response.data;
+  },
+
+  // Fetch completed sessions history
+  fetchSessionHistory: async (clerkId) => {
+    const response = await apiClient.get(`/session/history/${clerkId}`);
+    return response.data;
+  },
+
+  // Seed demo tutors for presentation
+  seedDatabase: async () => {
+    const response = await apiClient.post('/db/seed');
+    return response.data;
   }
 };

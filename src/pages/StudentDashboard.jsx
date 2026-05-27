@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, X, GraduationCap, Video, RefreshCw, Wallet } from 'lucide-react';
+import { Star, X, GraduationCap, Video, RefreshCw, Wallet, Calendar, Play, Download } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import Sidebar from '../components/Sidebar';
 import { api } from '../services/api';
@@ -13,14 +13,16 @@ const StudentDashboard = () => {
     const [selectedTutor, setSelectedTutor] = useState(null);
     const [filter, setFilter] = useState('Wszystkie');
     const [tutors, setTutors] = useState([]);
+    const [history, setHistory] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSeeding, setIsSeeding] = useState(false);
     const [walletBalance, setWalletBalance] = useState(100.00);
     const [selectedDeposit, setSelectedDeposit] = useState(50);
     const [isDepositing, setIsDepositing] = useState(false);
     const [isStartingCall, setIsStartingCall] = useState(false);
     const navigate = useNavigate();
 
-    // Fetch tutors and user profile on mount & when tab changes
+    // Fetch tutors, history and user profile
     const loadDashboardData = async () => {
         setIsLoading(true);
         try {
@@ -28,6 +30,12 @@ const StudentDashboard = () => {
                 const profileData = await api.fetchProfile(user.id);
                 if (profileData && profileData.profile) {
                     setWalletBalance(profileData.profile.walletBalance || 0.00);
+                }
+
+                // Fetch history
+                const sessionHistory = await api.fetchSessionHistory(user.id);
+                if (sessionHistory) {
+                    setHistory(sessionHistory);
                 }
             }
 
@@ -53,7 +61,6 @@ const StudentDashboard = () => {
     const handleStartCall = async (tutor) => {
         if (!user) return;
         
-        // Ensure student has at least 5 minutes worth of balance
         const minRequiredBalance = tutor.pricePerMinute * 5;
         if (walletBalance < minRequiredBalance) {
             alert(`Niewystarczające środki w portfelu! Doładuj konto. Minimalna kwota na rozpoczęcie lekcji (5 min) to ${minRequiredBalance.toFixed(2)} PLN.`);
@@ -65,8 +72,6 @@ const StudentDashboard = () => {
         setIsStartingCall(true);
         try {
             const session = await api.startSession(user.id, tutor.clerkId);
-            
-            // Redirect to active call page
             navigate(`/call/${session.id}`, {
                 state: { session }
             });
@@ -95,6 +100,26 @@ const StudentDashboard = () => {
         }
     };
 
+    const handleSeedDemo = async () => {
+        setIsSeeding(true);
+        try {
+            const result = await api.seedDatabase();
+            alert(result.message || "Pomyślnie zasilono bazę danych demo!");
+            loadDashboardData();
+        } catch (error) {
+            console.error("Failed to seed database:", error);
+            alert("Błąd podczas zasilania bazy danych demo.");
+        } finally {
+            setIsSeeding(false);
+        }
+    };
+
+    const formatDuration = (totalSeconds) => {
+        const mins = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        return `${mins} min ${secs} sek`;
+    };
+
     return (
         <div className="min-h-screen bg-[#f8fafc] flex">
             <Sidebar role="student" activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -113,7 +138,7 @@ const StudentDashboard = () => {
                             </div>
                             <button 
                                 onClick={loadDashboardData}
-                                className="p-2 rounded-full hover:bg-slate-50 transition-colors text-slate-400"
+                                className="p-2 rounded-full hover:bg-slate-50 transition-colors text-slate-400 cursor-pointer"
                                 title="Odśwież dane"
                             >
                                 <RefreshCw size={18} />
@@ -144,19 +169,28 @@ const StudentDashboard = () => {
                                     </div>
                                 ) : filteredTutors.length === 0 ? (
                                     <div className="bg-white p-16 rounded-[40px] text-center border border-slate-100 max-w-lg mx-auto shadow-sm mt-10">
-                                        <div className="w-16 h-16 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center mx-auto mb-6">
+                                        <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6">
                                             <Video size={28} />
                                         </div>
                                         <h3 className="text-xl font-black text-slate-800 mb-2">Brak aktywnych korepetytorów</h3>
-                                        <p className="text-slate-400 mb-6 text-sm leading-relaxed">
-                                            Wszyscy eksperci z wybranego przedmiotu są obecnie offline. Zaloguj się w innej przeglądarce jako korepetytor, aby przetestować na żywo!
+                                        <p className="text-slate-400 mb-8 text-sm leading-relaxed">
+                                            Wszyscy eksperci są offline. Do celów prezentacji możesz natychmiast zaszilić bazę danych 5 wirtualnymi korepetytorami online!
                                         </p>
-                                        <button 
-                                            onClick={loadDashboardData} 
-                                            className="bg-emerald-400 hover:bg-emerald-500 text-white font-bold px-6 py-3 rounded-2xl transition-all shadow-md flex items-center gap-2 mx-auto cursor-pointer"
-                                        >
-                                            <RefreshCw size={16} /> Odśwież listę
-                                        </button>
+                                        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                                            <button 
+                                                onClick={handleSeedDemo} 
+                                                disabled={isSeeding}
+                                                className="bg-emerald-400 hover:bg-emerald-500 text-white font-black px-8 py-4 rounded-2xl transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                                            >
+                                                {isSeeding ? <RefreshCw className="animate-spin" size={18} /> : "Zasil bazę demo (5 тьюторов)"}
+                                            </button>
+                                            <button 
+                                                onClick={loadDashboardData} 
+                                                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-6 py-4 rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                            >
+                                                <RefreshCw size={16} /> Odśwież
+                                            </button>
+                                        </div>
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-8">
@@ -227,6 +261,63 @@ const StudentDashboard = () => {
                                         )}
                                     </button>
                                 </div>
+                            </motion.div>
+                        )}
+
+                        {activeTab === 'historia' && (
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="max-w-4xl mx-auto">
+                                <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2">
+                                    <Calendar className="text-emerald-500" /> Historia lekcji
+                                </h2>
+                                
+                                {isLoading ? (
+                                    <div className="flex justify-center py-10">
+                                        <RefreshCw className="animate-spin text-emerald-400" size={24} />
+                                    </div>
+                                ) : history.length === 0 ? (
+                                    <div className="bg-white p-12 rounded-[40px] text-center border border-slate-100 shadow-sm">
+                                        <p className="text-slate-400 font-bold">Brak historii lekcji. Odbądź swoją pierwszą konsultację!</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {history.map(session => (
+                                            <div key={session.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                                <div>
+                                                    <h3 className="font-black text-slate-800 text-lg">Sesja #{session.id.slice(-6)}</h3>
+                                                    <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">
+                                                        {new Date(session.startTime).toLocaleDateString('pl-PL')} o {new Date(session.startTime).toLocaleTimeString('pl-PL', {hour: '2-digit', minute:'2-digit'})}
+                                                    </p>
+                                                    <div className="flex items-center gap-4 mt-2">
+                                                        <span className="bg-slate-50 px-3 py-1 rounded-full text-xs font-bold text-slate-500">
+                                                            {formatDuration(session.durationSeconds || 0)}
+                                                        </span>
+                                                        <span className="bg-emerald-50 px-3 py-1 rounded-full text-xs font-bold text-emerald-600">
+                                                            {(session.tutorRate || 1.50).toFixed(2)} PLN / min
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                                                    <div className="text-right">
+                                                        <p className="text-[10px] text-slate-400 font-bold uppercase">Koszt</p>
+                                                        <p className="font-mono text-xl font-black text-blue-500">{(session.cost || 0).toFixed(2)} PLN</p>
+                                                    </div>
+                                                    
+                                                    {session.recordingUrl && (
+                                                        <a 
+                                                            href={session.recordingUrl} 
+                                                            target="_blank" 
+                                                            rel="noopener noreferrer"
+                                                            className="p-3 bg-slate-900 text-white rounded-2xl hover:bg-emerald-500 transition-colors shadow-sm flex items-center justify-center gap-2 text-xs font-bold"
+                                                        >
+                                                            <Download size={14} /> Nagranie
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </motion.div>
                         )}
                     </AnimatePresence>
