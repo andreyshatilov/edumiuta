@@ -177,12 +177,11 @@ app.post('/api/session/start', async (req, res) => {
       status: 'active',
       dailyRoomUrl,
       cost: 0,
-      durationSeconds: 0,
-      tutorRate: tutor ? tutor.pricePerMinute : 1.50
+      durationSeconds: 0
     };
     
     const response = await flotiqClient.post('/tutor_session', payload);
-    res.json({ ...response.data, tutorRate: payload.tutorRate });
+    res.json({ ...response.data, tutorRate: tutor ? tutor.pricePerMinute : 1.50 });
   } catch (error) {
     console.error('Error creating session in Flotiq:', error.response?.data || error.message);
     res.status(500).json({ error: 'Failed to initiate session' });
