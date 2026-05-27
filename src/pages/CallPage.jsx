@@ -34,6 +34,7 @@ const CallPage = () => {
     const isDrawingRef = useRef(false);
     const lastXRef = useRef(0);
     const lastYRef = useRef(0);
+    const wsRef = useRef(null);
 
     // 1. Load active session detail from DB if not passed
     useEffect(() => {
@@ -44,7 +45,7 @@ const CallPage = () => {
             }
             try {
                 // Fetch the session from the backend
-                const activeSession = await api.fetchActiveSession(sessionId);
+                const activeSession = await api.fetchSession(sessionId);
                 if (activeSession) {
                     setSession(activeSession);
                     setPricePerMinute(activeSession.tutorRate || 1.50);
@@ -59,6 +60,62 @@ const CallPage = () => {
 
         loadSessionDetails();
     }, [sessionId, session]);
+
+    // 1b. Connect to WebSocket server for whiteboard sync fallback
+    useEffect(() => {
+        if (!sessionId) return;
+        
+        let apiHost = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+        if (apiHost.endsWith('/')) {
+            apiHost = apiHost.slice(0, -1);
+        }
+        if (apiHost.endsWith('/api')) {
+            apiHost = apiHost.slice(0, -4);
+        }
+        
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        // Replace http:// or https:// with ws:// or wss://
+        const wsHost = apiHost.replace(/^https?:\/\//, '');
+        const wsUrl = `${protocol}//${wsHost}/api/sync?roomId=${sessionId}`;
+        
+        console.log("Connecting to whiteboard sync WebSocket:", wsUrl);
+        let ws;
+        try {
+            ws = new WebSocket(wsUrl);
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'draw') {
+                        drawOnCanvas(data.lastX, data.lastY, data.currentX, data.currentY, data.color, data.strokeWidth, data.tool);
+                    } else if (data.type === 'clear') {
+                        clearLocalCanvas();
+                    }
+                } catch (err) {
+                    console.error("Error parsing WebSocket sync message:", err);
+                }
+            };
+            
+            ws.onopen = () => {
+                console.log("Connected to whiteboard sync WebSocket successfully.");
+            };
+            
+            ws.onerror = (err) => {
+                console.error("WebSocket sync error:", err);
+            };
+            
+            wsRef.current = ws;
+        } catch (wsError) {
+            console.error("Failed to create WebSocket:", wsError);
+        }
+        
+        return () => {
+            if (ws) {
+                ws.close();
+            }
+            wsRef.current = null;
+        };
+    }, [sessionId]);
 
     // 2. Initialize Daily.co video call frame
     useEffect(() => {
@@ -229,6 +286,20 @@ const CallPage = () => {
             }, '*');
         }
 
+        // Broadcast to Peer over WebSocket fallback
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({
+                type: 'draw',
+                lastX: lastXRef.current,
+                lastY: lastYRef.current,
+                currentX,
+                currentY,
+                color: drawColor,
+                strokeWidth,
+                tool: activeTool
+            }));
+        }
+
         lastXRef.current = currentX;
         lastYRef.current = currentY;
     };
@@ -249,6 +320,9 @@ const CallPage = () => {
         // Broadcast clear
         if (callFrameRef.current) {
             callFrameRef.current.sendAppMessage({ type: 'clear' }, '*');
+        }
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'clear' }));
         }
     };
 

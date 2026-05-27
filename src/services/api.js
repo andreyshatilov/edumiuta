@@ -59,6 +59,12 @@ export const api = {
     return response.data; // returns { session, cost }
   },
 
+  // Fetch session details by session ID
+  fetchSession: async (sessionId) => {
+    const response = await apiClient.get(`/session/${sessionId}`);
+    return response.data;
+  },
+
   // Check if there is an active session (for incoming call polling)
   fetchActiveSession: async (clerkId) => {
     try {

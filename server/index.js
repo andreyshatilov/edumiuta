@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import axios from 'axios';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { WebSocketServer } from 'ws';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -138,6 +139,7 @@ app.post('/api/session/start', async (req, res) => {
   // Call Daily.co API to create room
   if (DAILY_API_KEY && DAILY_API_KEY !== 'your_daily_co_api_key_here') {
     try {
+      // Try to create room with cloud recording enabled
       const dailyResponse = await axios.post(
         'https://api.daily.co/v1/rooms',
         {
@@ -157,8 +159,30 @@ app.post('/api/session/start', async (req, res) => {
       );
       dailyRoomUrl = dailyResponse.data.url;
     } catch (dailyError) {
-      console.error('Daily.co API error:', dailyError.response?.data || dailyError.message);
-      dailyRoomUrl = `https://meet.jit.si/${roomName}`;
+      console.warn('Daily.co API error with cloud recording, retrying without recording:', dailyError.response?.data || dailyError.message);
+      try {
+        // Retry without recording (guarantees success on basic free developer accounts)
+        const dailyResponse = await axios.post(
+          'https://api.daily.co/v1/rooms',
+          {
+            name: roomName,
+            properties: {
+              enable_chat: true,
+              exp: Math.floor(Date.now() / 1000) + 7200,
+            },
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${DAILY_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        dailyRoomUrl = dailyResponse.data.url;
+      } catch (retryError) {
+        console.error('Daily.co API fallback error:', retryError.response?.data || retryError.message);
+        dailyRoomUrl = `https://meet.jit.si/${roomName}`;
+      }
     }
   } else {
     dailyRoomUrl = `https://meet.jit.si/${roomName}`;
@@ -255,6 +279,23 @@ app.post('/api/session/end', async (req, res) => {
   } catch (error) {
     console.error('Error ending session in Flotiq:', error.response?.data || error.message);
     res.status(500).json({ error: 'Failed to end session' });
+  }
+// 5b. GET Fetch session detail by sessionId
+app.get('/api/session/:sessionId', async (req, res) => {
+  const { sessionId } = req.params;
+  try {
+    const response = await flotiqClient.get(`/tutor_session/${sessionId}`);
+    const session = response.data;
+    
+    // Fetch tutor rate to store inside session snapshot
+    const tutorFilter = encodeURIComponent(JSON.stringify({ clerkId: { type: 'equals', filter: session.tutorClerkId } }));
+    const tutorRes = await flotiqClient.get(`/tutor_profile?filters=${tutorFilter}`);
+    const tutor = tutorRes.data.data[0];
+    
+    res.json({ ...session, tutorRate: tutor ? tutor.pricePerMinute : 1.50 });
+  } catch (error) {
+    console.error('Error fetching session details from Flotiq:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to fetch session details' });
   }
 });
 
@@ -436,6 +477,106 @@ app.post('/api/db/seed', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// 12. GET Debug Daily.co configuration
+app.get('/api/debug/daily', async (req, res) => {
+  const keyStatus = {
+    exists: !!DAILY_API_KEY,
+    isPlaceholder: DAILY_API_KEY === 'your_daily_co_api_key_here',
+    keyLength: DAILY_API_KEY ? DAILY_API_KEY.length : 0
+  };
+
+  if (!DAILY_API_KEY || keyStatus.isPlaceholder) {
+    return res.json({
+      status: 'error',
+      message: 'Daily.co API key is not configured or is set to placeholder in environment variables.',
+      keyStatus
+    });
+  }
+
+  const roomName = `eduminuta_debug_${Date.now()}`;
+  try {
+    const dailyResponse = await axios.post(
+      'https://api.daily.co/v1/rooms',
+      {
+        name: roomName,
+        properties: {
+          enable_chat: true,
+          exp: Math.floor(Date.now() / 1000) + 900, // 15 mins
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${DAILY_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    return res.json({
+      status: 'success',
+      message: 'Daily.co room created successfully!',
+      roomUrl: dailyResponse.data.url,
+      keyStatus
+    });
+  } catch (error) {
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to create Daily.co room.',
+      error: error.response?.data || error.message,
+      keyStatus
+    });
+  }
+});
+
+const server = app.listen(PORT, () => {
   console.log(`🚀 EduMinuta Live Backend Server running on port ${PORT}`);
+});
+
+// Setup WebSocket Server for drawing synchronization fallback
+const wss = new WebSocketServer({ noServer: true });
+const rooms = new Map();
+
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url, 'http://localhost');
+  if (url.pathname === '/api/sync') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
+wss.on('connection', (ws, request) => {
+  const url = new URL(request.url, 'http://localhost');
+  const roomId = url.searchParams.get('roomId');
+
+  if (!roomId) {
+    ws.close();
+    return;
+  }
+
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, new Set());
+  }
+  rooms.get(roomId).add(ws);
+
+  ws.on('message', (message) => {
+    const clients = rooms.get(roomId);
+    if (!clients) return;
+    for (const client of clients) {
+      if (client !== ws && client.readyState === 1) { // 1 = OPEN
+        client.send(message.toString());
+      }
+    }
+  });
+
+  ws.on('close', () => {
+    const clients = rooms.get(roomId);
+    if (clients) {
+      clients.delete(ws);
+      if (clients.size === 0) {
+        rooms.delete(roomId);
+      }
+    }
+  });
 });
