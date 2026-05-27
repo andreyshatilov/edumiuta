@@ -1,9 +1,21 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+// Get base URL and ensure it has the /api prefix to match backend endpoints
+const getBaseUrl = () => {
+  let url = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+  // Strip trailing slash if present
+  if (url.endsWith('/')) {
+    url = url.slice(0, -1);
+  }
+  // Append /api if not already present
+  if (!url.endsWith('/api')) {
+    url = `${url}/api`;
+  }
+  return url;
+};
 
 const apiClient = axios.create({
-  baseURL: API_URL,
+  baseURL: getBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
