@@ -45,10 +45,11 @@ const SCHEMAS = [
     },
     metaDefinition: {
       propertiesConfig: {
-        clerkId: { label: 'Clerk User ID' },
-        name: { label: 'Full Name' },
-        walletBalance: { label: 'Wallet Balance (PLN)' }
-      }
+        clerkId: { label: 'Clerk User ID', unique: true, inputType: 'text' },
+        name: { label: 'Full Name', unique: false, inputType: 'text' },
+        walletBalance: { label: 'Wallet Balance (PLN)', unique: false, inputType: 'number' }
+      },
+      order: ['clerkId', 'name', 'walletBalance']
     }
   },
   {
@@ -78,17 +79,18 @@ const SCHEMAS = [
     },
     metaDefinition: {
       propertiesConfig: {
-        clerkId: { label: 'Clerk User ID' },
-        name: { label: 'Full Name' },
-        university: { label: 'University' },
-        subject: { label: 'Subject' },
-        bio: { label: 'Biography' },
-        pricePerMinute: { label: 'Price per Minute (PLN)' },
-        imageUrl: { label: 'Image URL' },
-        isOnline: { label: 'Is Available Online?' },
-        rating: { label: 'Rating (0-5)' },
-        reviewsCount: { label: 'Total Reviews' }
-      }
+        clerkId: { label: 'Clerk User ID', unique: true, inputType: 'text' },
+        name: { label: 'Full Name', unique: false, inputType: 'text' },
+        university: { label: 'University', unique: false, inputType: 'text' },
+        subject: { label: 'Subject', unique: false, inputType: 'text' },
+        bio: { label: 'Biography', unique: false, inputType: 'textarea' },
+        pricePerMinute: { label: 'Price per Minute (PLN)', unique: false, inputType: 'number' },
+        imageUrl: { label: 'Image URL', unique: false, inputType: 'text' },
+        isOnline: { label: 'Is Available Online?', unique: false, inputType: 'checkbox' },
+        rating: { label: 'Rating (0-5)', unique: false, inputType: 'number' },
+        reviewsCount: { label: 'Total Reviews', unique: false, inputType: 'number' }
+      },
+      order: ['clerkId', 'name', 'university', 'subject', 'bio', 'pricePerMinute', 'imageUrl', 'isOnline', 'rating', 'reviewsCount']
     }
   },
   {
@@ -117,16 +119,17 @@ const SCHEMAS = [
     },
     metaDefinition: {
       propertiesConfig: {
-        studentClerkId: { label: 'Student Clerk ID' },
-        tutorClerkId: { label: 'Tutor Clerk ID' },
-        startTime: { label: 'Start Time' },
-        endTime: { label: 'End Time' },
-        durationSeconds: { label: 'Duration (seconds)' },
-        cost: { label: 'Cost (PLN)' },
-        status: { label: 'Status (active/completed/failed)' },
-        dailyRoomUrl: { label: 'Daily.co Room URL' },
-        recordingUrl: { label: 'Call Recording URL' }
-      }
+        studentClerkId: { label: 'Student Clerk ID', unique: false, inputType: 'text' },
+        tutorClerkId: { label: 'Tutor Clerk ID', unique: false, inputType: 'text' },
+        startTime: { label: 'Start Time', unique: false, inputType: 'text' },
+        endTime: { label: 'End Time', unique: false, inputType: 'text' },
+        durationSeconds: { label: 'Duration (seconds)', unique: false, inputType: 'number' },
+        cost: { label: 'Cost (PLN)', unique: false, inputType: 'number' },
+        status: { label: 'Status (active/completed/failed)', unique: false, inputType: 'text' },
+        dailyRoomUrl: { label: 'Daily.co Room URL', unique: false, inputType: 'text' },
+        recordingUrl: { label: 'Call Recording URL', unique: false, inputType: 'text' }
+      },
+      order: ['studentClerkId', 'tutorClerkId', 'startTime', 'endTime', 'durationSeconds', 'cost', 'status', 'dailyRoomUrl', 'recordingUrl']
     }
   },
   {
@@ -150,11 +153,12 @@ const SCHEMAS = [
     },
     metaDefinition: {
       propertiesConfig: {
-        clerkId: { label: 'Clerk User ID' },
-        amount: { label: 'Amount (PLN)' },
-        type: { label: 'Type (deposit/payment/earnings)' },
-        timestamp: { label: 'Timestamp' }
-      }
+        clerkId: { label: 'Clerk User ID', unique: false, inputType: 'text' },
+        amount: { label: 'Amount (PLN)', unique: false, inputType: 'number' },
+        type: { label: 'Type (deposit/payment/earnings)', unique: false, inputType: 'text' },
+        timestamp: { label: 'Timestamp', unique: false, inputType: 'text' }
+      },
+      order: ['clerkId', 'amount', 'type', 'timestamp']
     }
   }
 ];
@@ -166,16 +170,15 @@ async function checkAndCreateSchema(schema) {
     console.log(`ℹ️ Content Type "${schema.label}" (${schema.name}) już istnieje w Flotiq. Pomijam.`);
   } catch (error) {
     if (error.response && error.response.status === 404) {
-      // Create CTD
       console.log(`⚙️ Tworzenie Content Type "${schema.label}" (${schema.name})...`);
       try {
         await flotiqApi.post('', schema);
         console.log(`✅ Pomyślnie utworzono Content Type "${schema.label}"!`);
       } catch (createError) {
-        console.error(`❌ Błąd przy tworzeniu "${schema.name}":`, createError.response?.data || createError.message);
+        console.error(`❌ Błąd при создании "${schema.name}":`, createError.response?.data || createError.message);
       }
     } else {
-      console.error(`❌ Błąd przy sprawdzaniu "${schema.name}":`, error.response?.data || error.message);
+      console.error(`❌ Błąd при проверке "${schema.name}":`, error.response?.data || error.message);
     }
   }
 }
