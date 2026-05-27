@@ -18,6 +18,43 @@ const TutorDashboard = () => {
     const [isRespondingCall, setIsRespondingCall] = useState(false);
     const navigate = useNavigate();
 
+    const [messages, setMessages] = useState([
+        { id: 1, text: "Dzień dobry! Czy pomógłby mi Pan z testem White'a w Gretlu? Mam problem z interpretacją wyników p-value. Przesyłam zrzut ekranu z zadaniem.", sender: 'student', time: '10:15' },
+        { id: 2, text: "Cześć Marek! Jasne, test White'a to klasyk. Pamiętaj, że tam hipoteza zerowa to stałość wariancji (homoskedastyczność). Jeśli chcesz, możemy wejść na 5-minutową konsultację teraz?", sender: 'tutor', time: '10:17' }
+    ]);
+    const [chatInput, setChatInput] = useState('');
+    const [isTyping, setIsTyping] = useState(false);
+
+    const handleSendMessage = () => {
+        if (!chatInput.trim()) return;
+        const newMsg = {
+            id: Date.now(),
+            text: chatInput,
+            sender: 'tutor',
+            time: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+        };
+        setMessages(prev => [...prev, newMsg]);
+        setChatInput('');
+        
+        setIsTyping(true);
+        setTimeout(() => {
+            setIsTyping(false);
+            const replies = [
+                "Super! Już doładowuję portfel i dzwonię!",
+                "Dzięki za odpowiedź! A czy w teście Breuscha-Pagana też tak robimy?",
+                "Jasne, już klikam u siebie 'Rozpocznij naukę' w panelu!",
+                "Ekstra, dzięki wielkie! Właśnie wchodzę na lekcję."
+            ];
+            const randomReply = replies[Math.floor(Math.random() * replies.length)];
+            setMessages(prev => [...prev, {
+                id: Date.now() + 1,
+                text: randomReply,
+                sender: 'student',
+                time: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+            }]);
+        }, 2000);
+    };
+
     // Fetch tutor profile, status, earnings and history
     const loadProfileData = async () => {
         if (!user) return;
@@ -144,35 +181,50 @@ const TutorDashboard = () => {
                                 {/* Chat Sidebar */}
                                 <div className="w-80 border-r border-slate-50 p-6">
                                     <h3 className="font-black text-slate-800 mb-6">Wiadomości</h3>
-                                    <div className="bg-emerald-50 p-4 rounded-3xl border border-emerald-100 flex items-center gap-3">
+                                    <div className="bg-[#f0fdf4] p-4 rounded-3xl border border-emerald-100 flex items-center gap-3">
                                         <div className="w-12 h-12 bg-blue-200 rounded-2xl flex items-center justify-center font-bold text-blue-700">M</div>
                                         <div>
                                             <p className="font-black text-slate-800">Marek (UEK)</p>
-                                            <p className="text-xs text-emerald-600 font-bold">Pisze...</p>
+                                            <p className="text-xs text-emerald-600 font-bold">{isTyping ? 'Pisze...' : 'Online'}</p>
                                         </div>
                                     </div>
                                 </div>
                                 {/* Chat Window */}
                                 <div className="flex-1 flex flex-col bg-slate-50/30">
                                     <div className="flex-1 p-10 space-y-6 overflow-y-auto">
-                                        <div className="bg-white p-6 rounded-[30px] rounded-tl-none shadow-sm max-w-[80%] border border-slate-100">
-                                            <p className="text-slate-600">Dzień dobry! Czy pomógłby mi Pan z testem White'a w Gretlu? Mam problem z interpretacją wyników p-value. Przesyłam zrzut ekranu z zadaniem.</p>
-                                            <div className="mt-4 p-3 bg-slate-100 rounded-2xl flex items-center gap-3 border border-dashed border-slate-300">
-                                                <Filter size={20} className="text-slate-400" />
-                                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest text-center">zadanie_ekonometria_1.png</span>
+                                        {messages.map(msg => (
+                                            <div 
+                                                key={msg.id} 
+                                                className={`p-6 rounded-[30px] shadow-sm max-w-[80%] border ${msg.sender === 'student' ? 'bg-white text-slate-700 rounded-tl-none border-slate-100' : 'bg-emerald-400 text-white rounded-tr-none border-transparent ml-auto'}`}
+                                            >
+                                                <p className={msg.sender === 'tutor' ? 'font-bold' : ''}>{msg.text}</p>
+                                                <span className={`block text-[10px] mt-2 text-right ${msg.sender === 'student' ? 'text-slate-400' : 'text-emerald-100'}`}>{msg.time}</span>
                                             </div>
-                                        </div>
-                                        <div className="bg-emerald-400 text-white p-6 rounded-[30px] rounded-tr-none shadow-lg max-w-[80%] ml-auto">
-                                            <p className="font-bold">Cześć Marek! Jasne, test White'a to klasyk. Pamiętaj, że tam hipoteza zerowa to stałość wariancji (homoskedastyczność). Jeśli chcesz, możemy wejść na 5-minutową konsultację teraz?</p>
-                                        </div>
+                                        ))}
+                                        {isTyping && (
+                                            <div className="bg-white p-4 rounded-[20px] rounded-tl-none border border-slate-100 w-fit flex items-center gap-1.5 shadow-sm">
+                                                <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                                                <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                                                <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="p-8 bg-white border-t border-slate-50">
-                                        <div className="relative">
-                                            <input type="text" placeholder="Napisz do studenta..." className="w-full p-6 bg-slate-50 rounded-full border-none focus:ring-2 focus:ring-emerald-400 outline-none pr-20" />
-                                            <button className="absolute right-4 top-1/2 -translate-y-1/2 bg-emerald-400 text-white p-4 rounded-full shadow-lg shadow-emerald-100">
+                                        <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="relative">
+                                            <input 
+                                                type="text" 
+                                                value={chatInput}
+                                                onChange={(e) => setChatInput(e.target.value)}
+                                                placeholder="Napisz do studenta..." 
+                                                className="w-full p-6 bg-slate-50 rounded-full border-none focus:ring-2 focus:ring-emerald-400 outline-none pr-20 text-slate-800" 
+                                            />
+                                            <button 
+                                                type="submit"
+                                                className="absolute right-4 top-1/2 -translate-y-1/2 bg-emerald-400 text-white p-4 rounded-full shadow-lg shadow-emerald-100 cursor-pointer"
+                                            >
                                                 <Send size={20} />
                                             </button>
-                                        </div>
+                                        </form>
                                     </div>
                                 </div>
                             </motion.div>

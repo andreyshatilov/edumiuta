@@ -20,6 +20,9 @@ const StudentDashboard = () => {
     const [selectedDeposit, setSelectedDeposit] = useState(50);
     const [isDepositing, setIsDepositing] = useState(false);
     const [isStartingCall, setIsStartingCall] = useState(false);
+    const [showBlikModal, setShowBlikModal] = useState(false);
+    const [blikCode, setBlikCode] = useState('');
+    const [blikStep, setBlikStep] = useState('input'); // input, processing, success
     const navigate = useNavigate();
 
     // Fetch tutors, history and user profile
@@ -248,17 +251,15 @@ const StudentDashboard = () => {
                                     </div>
 
                                     <button 
-                                        onClick={handleDeposit}
+                                        onClick={() => {
+                                            setShowBlikModal(true);
+                                            setBlikStep('input');
+                                            setBlikCode('');
+                                        }}
                                         disabled={isDepositing}
                                         className="w-full bg-emerald-400 text-white py-5 rounded-2xl font-black text-xl hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-100 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
                                     >
-                                        {isDepositing ? (
-                                            <>
-                                                <RefreshCw className="animate-spin" size={20} /> Przetwarzanie...
-                                            </>
-                                        ) : (
-                                            `Doładuj ${selectedDeposit} PLN przez BLIK`
-                                        )}
+                                        Doładuj {selectedDeposit} PLN przez BLIK
                                     </button>
                                 </div>
                             </motion.div>
@@ -369,6 +370,118 @@ const StudentDashboard = () => {
                                     </div>
                                 </div>
                             </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* GORGEOUS BLIK PAYMENT MODAL */}
+            <AnimatePresence>
+                {showBlikModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white text-slate-900 w-full max-w-sm rounded-[40px] p-8 text-center shadow-2xl relative border border-slate-100 overflow-hidden"
+                        >
+                            {/* BLIK Brand Header */}
+                            <div className="flex justify-center items-center gap-2 mb-6">
+                                <div className="bg-[#e2007a] text-white font-black px-4 py-1.5 rounded-xl text-lg tracking-wider transform -skew-x-12 shadow-md">
+                                    blik
+                                </div>
+                                <span className="text-slate-400 font-bold text-xs uppercase tracking-wider">Płatność mobilna</span>
+                            </div>
+
+                            {blikStep === 'input' && (
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-800 mb-2">Wpisz kod BLIK</h3>
+                                    <p className="text-slate-400 text-xs mb-6">Generowany w aplikacji Twojego banku</p>
+                                    
+                                    <div className="space-y-6">
+                                        <input
+                                            type="text"
+                                            maxLength="6"
+                                            placeholder="000 000"
+                                            value={blikCode}
+                                            onChange={(e) => {
+                                                const val = e.target.value.replace(/\D/g, '');
+                                                setBlikCode(val);
+                                            }}
+                                            className="w-full text-center text-3xl font-black tracking-[0.5em] p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-[#e2007a] focus:ring-0 outline-none text-slate-800"
+                                        />
+
+                                        <div className="bg-slate-50 p-4 rounded-2xl text-left border border-slate-100 flex justify-between items-center text-xs">
+                                            <span className="text-slate-500 font-bold">Kwota doładowania:</span>
+                                            <span className="font-black text-slate-800 text-sm">{selectedDeposit} PLN</span>
+                                        </div>
+
+                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={() => setShowBlikModal(false)}
+                                                className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-all cursor-pointer text-sm"
+                                            >
+                                                Anuluj
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    if (blikCode.length !== 6) {
+                                                        alert("Wpisz poprawny 6-cyfrowy kod BLIK!");
+                                                        return;
+                                                    }
+                                                    setBlikStep('processing');
+                                                    try {
+                                                        const updatedProfile = await api.depositFunds(user.id, selectedDeposit);
+                                                        setTimeout(() => {
+                                                            if (updatedProfile) {
+                                                                setWalletBalance(updatedProfile.walletBalance || 0.00);
+                                                                setBlikStep('success');
+                                                                setTimeout(() => {
+                                                                    setShowBlikModal(false);
+                                                                }, 1500);
+                                                            }
+                                                        }, 1800);
+                                                    } catch (err) {
+                                                        console.error(err);
+                                                        setBlikStep('input');
+                                                        alert("Błąd podczas doładowywania portfela.");
+                                                    }
+                                                }}
+                                                className="flex-1 py-4 bg-[#e2007a] hover:bg-[#c00067] text-white rounded-xl font-black transition-all cursor-pointer shadow-lg shadow-pink-100 text-sm"
+                                            >
+                                                Zatwierdź
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {blikStep === 'processing' && (
+                                <div className="py-8">
+                                    <div className="w-16 h-16 border-4 border-pink-100 border-t-[#e2007a] rounded-full animate-spin mx-auto mb-6"></div>
+                                    <h3 className="text-lg font-black text-slate-800 mb-2">Oczekiwanie na akceptację</h3>
+                                    <p className="text-slate-400 text-xs leading-relaxed px-4">
+                                        Potwierdź płatność w aplikacji swojego banku na telefonie w ciągu 90 sekund.
+                                    </p>
+                                </div>
+                            )}
+
+                            {blikStep === 'success' && (
+                                <div className="py-8">
+                                    <motion.div
+                                        initial={{ scale: 0.5, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+                                        className="w-16 h-16 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-md"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                    </motion.div>
+                                    <h3 className="text-xl font-black text-slate-800 mb-2">Doładowano konto!</h3>
+                                    <p className="text-emerald-500 font-bold text-sm">+{selectedDeposit}.00 PLN</p>
+                                </div>
+                            )}
                         </motion.div>
                     </div>
                 )}
