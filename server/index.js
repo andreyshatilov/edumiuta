@@ -113,6 +113,52 @@ app.post('/api/profile', async (req, res) => {
   }
 });
 
+// 2b. PUT Update User profile (Student or Tutor)
+app.put('/api/profile/update', async (req, res) => {
+  const { clerkId, name, role, university, subject, pricePerMinute, bio, imageUrl } = req.body;
+
+  if (!clerkId || !name || !role) {
+    return res.status(400).json({ error: 'Missing required fields (clerkId, name, role)' });
+  }
+
+  try {
+    if (role === 'student') {
+      // Find student profile to get its Flotiq ID
+      const studentFilter = encodeURIComponent(JSON.stringify({ clerkId: { type: 'equals', filter: clerkId } }));
+      const checkRes = await flotiqClient.get(`/student_profile?filters=${studentFilter}`);
+      const student = checkRes.data.data?.[0];
+      if (!student) {
+        return res.status(404).json({ error: 'Student profile not found' });
+      }
+
+      student.name = name;
+      const response = await flotiqClient.put(`/student_profile/${student.id}`, student);
+      return res.json({ role: 'student', profile: response.data });
+    } else {
+      // Find tutor profile
+      const tutorFilter = encodeURIComponent(JSON.stringify({ clerkId: { type: 'equals', filter: clerkId } }));
+      const checkRes = await flotiqClient.get(`/tutor_profile?filters=${tutorFilter}`);
+      const tutor = checkRes.data.data?.[0];
+      if (!tutor) {
+        return res.status(404).json({ error: 'Tutor profile not found' });
+      }
+
+      tutor.name = name;
+      tutor.university = university || tutor.university;
+      tutor.subject = subject || tutor.subject;
+      tutor.bio = bio || tutor.bio;
+      tutor.pricePerMinute = parseFloat(pricePerMinute) || tutor.pricePerMinute;
+      tutor.imageUrl = imageUrl || tutor.imageUrl;
+
+      const response = await flotiqClient.put(`/tutor_profile/${tutor.id}`, tutor);
+      return res.json({ role: 'tutor', profile: response.data });
+    }
+  } catch (error) {
+    console.error('Error updating profile in Flotiq:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
 // 3. GET List online/active Tutors
 app.get('/api/tutors', async (req, res) => {
   try {
@@ -477,6 +523,88 @@ app.post('/api/tutor/review', async (req, res) => {
     console.error('Error submitting tutor review:', error.response?.data || error.message);
     res.status(500).json({ error: 'Failed to submit review' });
   }
+});
+
+// Simple in-memory chat message store
+const chatMessages = [
+  { id: 'm1', senderId: 'demo_tutor_1', receiverId: 'any_student', text: "Witaj! W czym mogę pomóc? Specjalizuję się w mikroekonomii.", senderRole: 'tutor', timestamp: new Date(Date.now() - 3600000).toISOString() }
+];
+
+// 10c. GET Fetch messages between two users
+app.get('/api/chat/messages/:userA/:userB', (req, res) => {
+  const { userA, userB } = req.params;
+  const filtered = chatMessages.filter(
+    m => (m.senderId === userA && m.receiverId === userB) ||
+         (m.senderId === userB && m.receiverId === userA)
+  );
+  res.json(filtered);
+});
+
+// 10d. GET Fetch all conversations for a user
+app.get('/api/chat/conversations/:clerkId', async (req, res) => {
+  const { clerkId } = req.params;
+  const userMessages = chatMessages.filter(m => m.senderId === clerkId || m.receiverId === clerkId);
+  const peerIds = [...new Set(userMessages.map(m => m.senderId === clerkId ? m.receiverId : m.senderId))];
+  const conversations = [];
+  
+  for (const peerId of peerIds) {
+    let name = "Marek (Demo)";
+    let imageUrl = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&fit=crop&q=80";
+    let role = "student";
+    
+    try {
+      const studentFilter = encodeURIComponent(JSON.stringify({ clerkId: { type: 'equals', filter: peerId } }));
+      const studentRes = await flotiqClient.get(`/student_profile?filters=${studentFilter}`);
+      if (studentRes.data.data && studentRes.data.data.length > 0) {
+        name = studentRes.data.data[0].name;
+        role = "student";
+      } else {
+        const tutorFilter = encodeURIComponent(JSON.stringify({ clerkId: { type: 'equals', filter: peerId } }));
+        const tutorRes = await flotiqClient.get(`/tutor_profile?filters=${tutorFilter}`);
+        if (tutorRes.data.data && tutorRes.data.data.length > 0) {
+          name = tutorRes.data.data[0].name;
+          imageUrl = tutorRes.data.data[0].imageUrl;
+          role = "tutor";
+        }
+      }
+    } catch (err) {
+      console.error("Error looking up peer profile for conversation:", err);
+    }
+    
+    const peerMsgs = userMessages.filter(m => m.senderId === peerId || m.receiverId === peerId);
+    const lastMsg = peerMsgs[peerMsgs.length - 1];
+    
+    conversations.push({
+      peerId,
+      name,
+      imageUrl,
+      role,
+      lastMessage: lastMsg ? lastMsg.text : "",
+      timestamp: lastMsg ? lastMsg.timestamp : new Date().toISOString()
+    });
+  }
+  
+  res.json(conversations);
+});
+
+// 10e. POST Send message
+app.post('/api/chat/send', (req, res) => {
+  const { senderId, receiverId, text, senderRole } = req.body;
+  if (!senderId || !receiverId || !text) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  
+  const message = {
+    id: `msg_${Date.now()}`,
+    senderId,
+    receiverId,
+    text,
+    senderRole,
+    timestamp: new Date().toISOString()
+  };
+  
+  chatMessages.push(message);
+  res.json(message);
 });
 
 // 11. POST Seed database with sample tutors for presentation demo

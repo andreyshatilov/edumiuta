@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, X, GraduationCap, Video, RefreshCw, Wallet, Calendar, Play, Download } from 'lucide-react';
+import { Star, X, GraduationCap, Video, RefreshCw, Wallet, Calendar, Play, Download, Send, MessageSquare, User } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import Sidebar from '../components/Sidebar';
 import { api } from '../services/api';
@@ -27,6 +27,20 @@ const StudentDashboard = () => {
     const [sortBy, setSortBy] = useState('rating'); // rating, price-asc, price-desc
     const navigate = useNavigate();
 
+    // Student profile edit states
+    const [studentName, setStudentName] = useState('');
+    const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+    // Chat states
+    const [messages, setMessages] = useState([]);
+    const [chatInput, setChatInput] = useState('');
+    const [conversations, setConversations] = useState([]);
+    const [activePeerId, setActivePeerId] = useState(null);
+    
+    // Direct message from tutor profile modal
+    const [tutorMessageText, setTutorMessageText] = useState('');
+    const [isSendingDirectMessage, setIsSendingDirectMessage] = useState(false);
+
     // Fetch tutors, history and user profile
     const loadDashboardData = async () => {
         setIsLoading(true);
@@ -35,6 +49,7 @@ const StudentDashboard = () => {
                 const profileData = await api.fetchProfile(user.id);
                 if (profileData && profileData.profile) {
                     setWalletBalance(profileData.profile.walletBalance || 0.00);
+                    setStudentName(profileData.profile.name || user.fullName || '');
                 }
 
                 // Fetch history
@@ -58,6 +73,102 @@ const StudentDashboard = () => {
     useEffect(() => {
         loadDashboardData();
     }, [user, activeTab]);
+
+    // Save Student profile
+    const handleSaveStudentProfile = async (e) => {
+        e.preventDefault();
+        if (!user || isSavingProfile) return;
+        setIsSavingProfile(true);
+        try {
+            await api.updateProfile({
+                clerkId: user.id,
+                name: studentName,
+                role: 'student'
+            });
+            alert("Profil zaktualizowany pomyślnie!");
+        } catch (error) {
+            console.error("Error updating student profile:", error);
+            alert("Nie udało się zaktualizować profilu.");
+        } finally {
+            setIsSavingProfile(false);
+        }
+    };
+
+    // Chat handlers
+    const handleSendMessage = async () => {
+        if (!chatInput.trim() || !user || !activePeerId) return;
+        const textToSend = chatInput;
+        setChatInput('');
+        try {
+            await api.sendChatMessage(user.id, activePeerId, textToSend, 'student');
+            setMessages(prev => [...prev, {
+                id: Date.now(),
+                text: textToSend,
+                sender: 'student',
+                time: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+            }]);
+        } catch (err) {
+            console.error("Error sending chat message:", err);
+        }
+    };
+
+    const handleSendDirectMessage = async (e) => {
+        e.preventDefault();
+        if (!tutorMessageText.trim() || !user || !selectedTutor || isSendingDirectMessage) return;
+        setIsSendingDirectMessage(true);
+        const textToSend = tutorMessageText;
+        try {
+            await api.sendChatMessage(user.id, selectedTutor.clerkId, textToSend, 'student');
+            setTutorMessageText('');
+            setSelectedTutor(null);
+            setActivePeerId(selectedTutor.clerkId);
+            setActiveTab('czat');
+            alert("Wiadomość została wysłana! Przekierowano do czatu.");
+        } catch (err) {
+            console.error("Error sending direct message:", err);
+            alert("Nie udało się wysłać wiadomości.");
+        } finally {
+            setIsSendingDirectMessage(false);
+        }
+    };
+
+    // Real Chat messages polling loop for Student
+    useEffect(() => {
+        if (!user || activeTab !== 'czat') return;
+
+        const loadChatData = async () => {
+            try {
+                const convs = await api.fetchConversations(user.id);
+                setConversations(convs);
+                
+                // Set default peer if not set
+                if (convs.length > 0 && !activePeerId) {
+                    setActivePeerId(convs[0].peerId);
+                }
+
+                if (activePeerId) {
+                    const msgs = await api.fetchChatMessages(activePeerId, user.id);
+                    const mapped = msgs.map(m => ({
+                        id: m.id,
+                        text: m.text,
+                        sender: m.senderId === user.id ? 'student' : 'tutor',
+                        time: new Date(m.timestamp).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+                    }));
+                    setMessages(mapped);
+                }
+            } catch (err) {
+                console.error("Error loading student chat data:", err);
+            }
+        };
+
+        loadChatData();
+        const interval = setInterval(loadChatData, 3000);
+        return () => clearInterval(interval);
+    }, [user, activeTab, activePeerId]);
+
+    const activePeer = conversations.find(c => c.peerId === activePeerId);
+    const activePeerDetails = activePeer || tutors.find(t => t.clerkId === activePeerId);
+
 
     const filteredTutors = tutors
         .filter(t => filter === 'Wszystkie' || t.subject === filter)
@@ -361,6 +472,176 @@ const StudentDashboard = () => {
                                 )}
                             </motion.div>
                         )}
+
+                        {activeTab === 'czat' && (
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-[60px] shadow-sm border border-slate-100 h-[700px] flex overflow-hidden">
+                                {/* Chat Sidebar */}
+                                <div className="w-80 border-r border-slate-50 p-6 overflow-y-auto space-y-4 flex-shrink-0">
+                                    <h3 className="font-black text-slate-800 mb-6">Wiadomości</h3>
+                                    {conversations.length === 0 ? (
+                                        <p className="text-slate-400 text-xs font-bold uppercase text-center mt-10">Brak aktywnych czatów</p>
+                                    ) : (
+                                        conversations.map(conv => (
+                                            <div 
+                                                key={conv.peerId}
+                                                onClick={() => setActivePeerId(conv.peerId)}
+                                                className={`p-4 rounded-3xl border flex items-center gap-3 cursor-pointer transition-all ${activePeerId === conv.peerId ? 'bg-[#f0fdf4] border-emerald-100' : 'bg-white border-slate-100 hover:bg-slate-50'}`}
+                                            >
+                                                <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center font-bold text-emerald-700 overflow-hidden flex-shrink-0">
+                                                    {conv.imageUrl ? (
+                                                        <img src={conv.imageUrl} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="text-emerald-700 font-bold">{conv.name[0]?.toUpperCase()}</div>
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="font-black text-slate-800 truncate">{conv.name}</p>
+                                                    <p className="text-[10px] text-slate-400 truncate">{conv.lastMessage || 'Kliknij aby pisać'}</p>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                {/* Chat Window */}
+                                <div className="flex-1 flex flex-col bg-slate-50/30">
+                                    {activePeerId ? (
+                                        <>
+                                            {/* Chat header with tutor profile link */}
+                                            <div className="p-6 bg-white border-b border-slate-100 flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-12 h-12 bg-emerald-100 rounded-2xl overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                                        {activePeerDetails?.imageUrl ? (
+                                                            <img src={activePeerDetails.imageUrl} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="text-emerald-700 font-bold">{activePeerDetails?.name?.[0]?.toUpperCase()}</div>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-black text-slate-800">{activePeerDetails?.name || 'Korepetytor'}</h4>
+                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Korepetytor</p>
+                                                    </div>
+                                                </div>
+                                                <button 
+                                                    onClick={() => {
+                                                        const matched = tutors.find(t => t.clerkId === activePeerId);
+                                                        if (matched) {
+                                                            setSelectedTutor(matched);
+                                                        } else {
+                                                            alert("Nie znaleziono szczegółów profilu tego korepetytora.");
+                                                        }
+                                                    }}
+                                                    className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-xs font-black transition-all cursor-pointer"
+                                                >
+                                                    Zobacz profil
+                                                </button>
+                                            </div>
+                                            
+                                            {/* Messages */}
+                                            <div className="flex-1 p-10 space-y-6 overflow-y-auto">
+                                                {messages.map(msg => (
+                                                    <div 
+                                                        key={msg.id} 
+                                                        className={`p-6 rounded-[30px] shadow-sm max-w-[80%] border ${msg.sender === 'tutor' ? 'bg-white text-slate-700 rounded-tl-none border-slate-100' : 'bg-emerald-400 text-white rounded-tr-none border-transparent ml-auto'}`}
+                                                    >
+                                                        <p className={msg.sender === 'student' ? 'font-bold' : ''}>{msg.text}</p>
+                                                        <span className={`block text-[10px] mt-2 text-right ${msg.sender === 'tutor' ? 'text-slate-400' : 'text-emerald-100'}`}>{msg.time}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            
+                                            {/* Chat Input */}
+                                            <div className="p-8 bg-white border-t border-slate-50">
+                                                <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="relative">
+                                                    <input 
+                                                        type="text" 
+                                                        value={chatInput}
+                                                        onChange={(e) => setChatInput(e.target.value)}
+                                                        placeholder="Napisz wiadomość..." 
+                                                        className="w-full p-6 bg-slate-50 rounded-full border-none focus:ring-2 focus:ring-emerald-400 outline-none pr-20 text-slate-800" 
+                                                    />
+                                                    <button 
+                                                        type="submit"
+                                                        className="absolute right-4 top-1/2 -translate-y-1/2 bg-emerald-400 text-white p-4 rounded-full shadow-lg shadow-emerald-100 cursor-pointer"
+                                                    >
+                                                        <Send size={20} />
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="flex-1 flex flex-col items-center justify-center p-10 text-center">
+                                            <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mb-4">
+                                                <MessageSquare size={28} />
+                                            </div>
+                                            <h4 className="font-black text-slate-800 mb-1">Twój czat jest pusty</h4>
+                                            <p className="text-slate-400 text-sm max-w-xs leading-relaxed">
+                                                Wybierz korepetytora z listy, aby rozpocząć konwersację.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {activeTab === 'profil' && (
+                            <motion.div 
+                                initial={{ opacity: 0, y: 20 }} 
+                                animate={{ opacity: 1, y: 0 }} 
+                                className="max-w-2xl mx-auto bg-white p-12 rounded-[50px] shadow-sm border border-slate-100"
+                            >
+                                <form onSubmit={handleSaveStudentProfile} className="space-y-6">
+                                    <div className="flex justify-center mb-8">
+                                        <div className="relative">
+                                            <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-black text-2xl overflow-hidden shadow-inner">
+                                                {user?.imageUrl ? (
+                                                    <img src={user.imageUrl} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    studentName?.[0]?.toUpperCase() || 'S'
+                                                )}
+                                            </div>
+                                            <span className="absolute bottom-0 right-0 bg-blue-500 text-white p-1.5 rounded-full text-xs font-black shadow">Student</span>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Imię i nazwisko</label>
+                                        <input
+                                            type="text"
+                                            value={studentName}
+                                            onChange={(e) => setStudentName(e.target.value)}
+                                            className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-blue-400 text-sm"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex justify-between items-center">
+                                        <div>
+                                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Twój portfel</p>
+                                            <p className="text-2xl font-black text-emerald-500">{walletBalance.toFixed(2)} PLN</p>
+                                        </div>
+                                        <button 
+                                            type="button"
+                                            onClick={() => setActiveTab('portfel')}
+                                            className="px-6 py-3 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-2xl border border-slate-100 transition-all text-sm shadow-sm cursor-pointer"
+                                        >
+                                            Doładuj konto
+                                        </button>
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={isSavingProfile}
+                                        className="w-full bg-blue-500 text-white py-5 rounded-2xl font-black text-lg hover:bg-blue-600 transition-all shadow-lg shadow-blue-100 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                                    >
+                                        {isSavingProfile ? (
+                                            <>
+                                                <RefreshCw className="animate-spin" size={20} /> Zapisywanie...
+                                            </>
+                                        ) : "Zapisz zmiany w profilu"}
+                                    </button>
+                                </form>
+                            </motion.div>
+                        )}
                     </AnimatePresence>
                 </div>
             </main>
@@ -371,13 +652,13 @@ const StudentDashboard = () => {
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-md bg-slate-900/30">
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                            className="bg-white w-full max-w-3xl rounded-[60px] p-12 shadow-2xl relative border border-slate-100"
+                            className="bg-white w-full max-w-3xl rounded-[60px] p-12 shadow-2xl relative border border-slate-100 overflow-y-auto max-h-[90vh]"
                         >
                             <button onClick={() => setSelectedTutor(null)} className="absolute top-10 right-10 p-3 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
                                 <X size={28} />
                             </button>
                             <div className="flex flex-col md:flex-row gap-10 items-center md:items-start text-center md:text-left">
-                                <img src={selectedTutor.imageUrl} className="w-48 h-48 rounded-[50px] object-cover shadow-2xl border-8 border-slate-50" />
+                                <img src={selectedTutor.imageUrl} className="w-48 h-48 rounded-[50px] object-cover shadow-2xl border-8 border-slate-50 flex-shrink-0" />
                                 <div className="flex-1">
                                     <div className="bg-emerald-100 text-emerald-600 px-4 py-1 rounded-full text-sm font-black w-fit mb-4 mx-auto md:mx-0">
                                         {selectedTutor.pricePerMinute.toFixed(2)} PLN / MINUTA
@@ -390,7 +671,7 @@ const StudentDashboard = () => {
                                         <h4 className="font-black text-slate-700 mb-2">Specjalizacja: {selectedTutor.subject}</h4>
                                         <p className="text-slate-500 leading-relaxed italic">"{selectedTutor.bio}"</p>
                                     </div>
-                                    <div className="flex flex-col sm:flex-row gap-4">
+                                    <div className="flex flex-col sm:flex-row gap-4 mb-6">
                                         <button 
                                             onClick={() => handleStartCall(selectedTutor)}
                                             disabled={isStartingCall}
@@ -408,6 +689,29 @@ const StudentDashboard = () => {
                                             Zarezerwuj termin
                                         </button>
                                     </div>
+
+                                    {/* Direct message block */}
+                                    <form onSubmit={handleSendDirectMessage} className="pt-6 border-t border-slate-100">
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Napisz do korepetytora</label>
+                                        <div className="flex gap-3">
+                                            <input 
+                                                type="text" 
+                                                value={tutorMessageText}
+                                                onChange={(e) => setTutorMessageText(e.target.value)}
+                                                placeholder="Wpisz pytanie lub wiadomość..."
+                                                className="flex-1 p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm"
+                                                required
+                                            />
+                                            <button 
+                                                type="submit" 
+                                                disabled={isSendingDirectMessage}
+                                                className="bg-emerald-400 hover:bg-emerald-500 text-white px-6 py-4 rounded-2xl font-bold text-sm transition-all disabled:opacity-50 cursor-pointer flex items-center gap-2"
+                                            >
+                                                {isSendingDirectMessage ? <RefreshCw className="animate-spin" size={16} /> : <Send size={16} />}
+                                                Wyślij
+                                            </button>
+                                        </div>
+                                    </form>
                                 </div>
                             </div>
                         </motion.div>

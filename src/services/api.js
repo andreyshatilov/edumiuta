@@ -41,6 +41,12 @@ export const api = {
     return response.data;
   },
 
+  // Update student or tutor profile details
+  updateProfile: async (profileData) => {
+    const response = await apiClient.put('/profile/update', profileData);
+    return response.data;
+  },
+
   // Fetch online tutors list
   fetchTutors: async () => {
     const response = await apiClient.get('/tutors');
@@ -105,6 +111,24 @@ export const api = {
   // Submit tutor review and update their average rating
   submitReview: async (tutorClerkId, rating) => {
     const response = await apiClient.post('/tutor/review', { tutorClerkId, rating });
+    return response.data;
+  },
+
+  // Fetch messages between two users
+  fetchChatMessages: async (userA, userB) => {
+    const response = await apiClient.get(`/chat/messages/${userA}/${userB}`);
+    return response.data;
+  },
+
+  // Fetch all conversations for a user
+  fetchConversations: async (clerkId) => {
+    const response = await apiClient.get(`/chat/conversations/${clerkId}`);
+    return response.data;
+  },
+
+  // Send message
+  sendChatMessage: async (senderId, receiverId, text, senderRole) => {
+    const response = await apiClient.post('/chat/send', { senderId, receiverId, text, senderRole });
     return response.data;
   },
 

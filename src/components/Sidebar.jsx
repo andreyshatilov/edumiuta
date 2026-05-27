@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Wallet, Calendar, MessageSquare, Clock } from 'lucide-react';
+import { Search, Wallet, Calendar, MessageSquare, Clock, User } from 'lucide-react';
 import { useUser, UserButton } from '@clerk/clerk-react';
 
 const Sidebar = ({ role, activeTab, setActiveTab }) => {
@@ -11,10 +11,12 @@ const Sidebar = ({ role, activeTab, setActiveTab }) => {
         { id: 'portfel', label: 'Portfel', icon: <Wallet size={20} /> },
         { id: 'czat', label: 'Czaty', icon: <MessageSquare size={20} /> },
         { id: 'historia', label: 'Historia', icon: <Clock size={20} /> },
+        { id: 'profil', label: 'Profil', icon: <User size={20} /> },
     ] : [
         { id: 'czat', label: 'Czaty', icon: <MessageSquare size={20} /> },
         { id: 'zarobki', label: 'Zarobki', icon: <Wallet size={20} /> },
         { id: 'kalendarz', label: 'Kalendarz', icon: <Calendar size={20} /> },
+        { id: 'profil', label: 'Profil', icon: <User size={20} /> },
     ];
 
     const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress.split('@')[0] || "Użytkownik";

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Filter, Phone, PhoneOff, RefreshCw, Star, Wallet, Calendar, Clock, Download } from 'lucide-react';
+import { Send, Filter, Phone, PhoneOff, RefreshCw, Star, Wallet, Calendar, Clock, Download, X } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import Sidebar from '../components/Sidebar';
 import { api } from '../services/api';
@@ -18,41 +18,61 @@ const TutorDashboard = () => {
     const [isRespondingCall, setIsRespondingCall] = useState(false);
     const navigate = useNavigate();
 
-    const [messages, setMessages] = useState([
-        { id: 1, text: "Dzień dobry! Czy pomógłby mi Pan z testem White'a w Gretlu? Mam problem z interpretacją wyników p-value. Przesyłam zrzut ekranu z zadaniem.", sender: 'student', time: '10:15' },
-        { id: 2, text: "Cześć Marek! Jasne, test White'a to klasyk. Pamiętaj, że tam hipoteza zerowa to stałość wariancji (homoskedastyczność). Jeśli chcesz, możemy wejść na 5-minutową konsultację teraz?", sender: 'tutor', time: '10:17' }
-    ]);
+    const [messages, setMessages] = useState([]);
     const [chatInput, setChatInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);
 
-    const handleSendMessage = () => {
-        if (!chatInput.trim()) return;
-        const newMsg = {
-            id: Date.now(),
-            text: chatInput,
-            sender: 'tutor',
-            time: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
-        };
-        setMessages(prev => [...prev, newMsg]);
+    // Tutor profile edit states
+    const [tutorName, setTutorName] = useState('');
+    const [tutorUniversity, setTutorUniversity] = useState('');
+    const [tutorSubject, setTutorSubject] = useState('');
+    const [tutorPrice, setTutorPrice] = useState(1.50);
+    const [tutorBio, setTutorBio] = useState('');
+    const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+    // Real Chat variables
+    const [conversations, setConversations] = useState([]);
+    const [activePeerId, setActivePeerId] = useState(null);
+    const [selectedStudent, setSelectedStudent] = useState(null);
+
+    const handleSendMessage = async () => {
+        if (!chatInput.trim() || !user || !activePeerId) return;
+        const textToSend = chatInput;
         setChatInput('');
-        
-        setIsTyping(true);
-        setTimeout(() => {
-            setIsTyping(false);
-            const replies = [
-                "Super! Już doładowuję portfel i dzwonię!",
-                "Dzięki za odpowiedź! A czy w teście Breuscha-Pagana też tak robimy?",
-                "Jasne, już klikam u siebie 'Rozpocznij naukę' w panelu!",
-                "Ekstra, dzięki wielkie! Właśnie wchodzę na lekcję."
-            ];
-            const randomReply = replies[Math.floor(Math.random() * replies.length)];
+        try {
+            await api.sendChatMessage(user.id, activePeerId, textToSend, 'tutor');
             setMessages(prev => [...prev, {
-                id: Date.now() + 1,
-                text: randomReply,
-                sender: 'student',
+                id: Date.now(),
+                text: textToSend,
+                sender: 'tutor',
                 time: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
             }]);
-        }, 2000);
+        } catch (err) {
+            console.error("Error sending message:", err);
+        }
+    };
+
+    const handleSaveTutorProfile = async (e) => {
+        e.preventDefault();
+        if (!user || isSavingProfile) return;
+        setIsSavingProfile(true);
+        try {
+            await api.updateProfile({
+                clerkId: user.id,
+                name: tutorName,
+                role: 'tutor',
+                university: tutorUniversity,
+                subject: tutorSubject,
+                pricePerMinute: parseFloat(tutorPrice),
+                bio: tutorBio
+            });
+            alert("Profil zaktualizowany pomyślnie!");
+        } catch (error) {
+            console.error("Error updating profile:", error);
+            alert("Nie udało się zaktualizować profilu.");
+        } finally {
+            setIsSavingProfile(false);
+        }
     };
 
     // Fetch tutor profile, status, earnings and history
@@ -64,6 +84,13 @@ const TutorDashboard = () => {
             if (data && data.profile) {
                 setIsOnline(data.profile.isOnline || false);
                 setTotalEarnings(data.profile.totalEarnings || 0.00);
+                
+                // Populate edit fields
+                setTutorName(data.profile.name || '');
+                setTutorUniversity(data.profile.university || '');
+                setTutorSubject(data.profile.subject || '');
+                setTutorPrice(data.profile.pricePerMinute || 1.50);
+                setTutorBio(data.profile.bio || '');
             }
 
             // Fetch history
@@ -102,6 +129,40 @@ const TutorDashboard = () => {
         return () => clearInterval(interval);
     }, [user, isOnline, incomingSession]);
 
+    // Real Chat messages polling loop
+    useEffect(() => {
+        if (!user || activeTab !== 'czat') return;
+
+        const loadChatData = async () => {
+            try {
+                const convs = await api.fetchConversations(user.id);
+                setConversations(convs);
+                
+                // Set default peer if not set
+                if (convs.length > 0 && !activePeerId) {
+                    setActivePeerId(convs[0].peerId);
+                }
+
+                if (activePeerId) {
+                    const msgs = await api.fetchChatMessages(activePeerId, user.id);
+                    const mapped = msgs.map(m => ({
+                        id: m.id,
+                        text: m.text,
+                        sender: m.senderId === user.id ? 'tutor' : 'student',
+                        time: new Date(m.timestamp).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+                    }));
+                    setMessages(mapped);
+                }
+            } catch (err) {
+                console.error("Error loading chat data:", err);
+            }
+        };
+
+        loadChatData();
+        const interval = setInterval(loadChatData, 3000);
+        return () => clearInterval(interval);
+    }, [user, activeTab, activePeerId]);
+
     const handleToggleStatus = async () => {
         if (!user || isToggling) return;
         setIsToggling(true);
@@ -137,6 +198,8 @@ const TutorDashboard = () => {
             setIsRespondingCall(false);
         }
     };
+
+    const activePeer = conversations.find(c => c.peerId === activePeerId);
 
     const formatDuration = (totalSeconds) => {
         const mins = Math.floor(totalSeconds / 60);
@@ -179,53 +242,118 @@ const TutorDashboard = () => {
                         {activeTab === 'czat' && (
                             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-[60px] shadow-sm border border-slate-100 h-[700px] flex overflow-hidden">
                                 {/* Chat Sidebar */}
-                                <div className="w-80 border-r border-slate-50 p-6">
+                                <div className="w-80 border-r border-slate-50 p-6 overflow-y-auto space-y-4">
                                     <h3 className="font-black text-slate-800 mb-6">Wiadomości</h3>
-                                    <div className="bg-[#f0fdf4] p-4 rounded-3xl border border-emerald-100 flex items-center gap-3">
-                                        <div className="w-12 h-12 bg-blue-200 rounded-2xl flex items-center justify-center font-bold text-blue-700">M</div>
-                                        <div>
-                                            <p className="font-black text-slate-800">Marek (UEK)</p>
-                                            <p className="text-xs text-emerald-600 font-bold">{isTyping ? 'Pisze...' : 'Online'}</p>
-                                        </div>
-                                    </div>
+                                    {conversations.length === 0 ? (
+                                        <p className="text-slate-400 text-xs font-bold uppercase text-center mt-10">Brak aktywnych czatów</p>
+                                    ) : (
+                                        conversations.map(conv => (
+                                            <div 
+                                                key={conv.peerId}
+                                                onClick={() => setActivePeerId(conv.peerId)}
+                                                className={`p-4 rounded-3xl border flex items-center gap-3 cursor-pointer transition-all ${activePeerId === conv.peerId ? 'bg-[#f0fdf4] border-emerald-100' : 'bg-white border-slate-100 hover:bg-slate-50'}`}
+                                            >
+                                                <div className="w-12 h-12 bg-blue-200 rounded-2xl flex items-center justify-center font-bold text-blue-700 overflow-hidden flex-shrink-0">
+                                                    {conv.imageUrl ? (
+                                                        <img src={conv.imageUrl} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="text-blue-700 font-bold">{conv.name[0]?.toUpperCase()}</div>
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="font-black text-slate-800 truncate">{conv.name}</p>
+                                                    <p className="text-[10px] text-slate-400 truncate">{conv.lastMessage || 'Kliknij aby pisać'}</p>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
                                 </div>
                                 {/* Chat Window */}
                                 <div className="flex-1 flex flex-col bg-slate-50/30">
-                                    <div className="flex-1 p-10 space-y-6 overflow-y-auto">
-                                        {messages.map(msg => (
-                                            <div 
-                                                key={msg.id} 
-                                                className={`p-6 rounded-[30px] shadow-sm max-w-[80%] border ${msg.sender === 'student' ? 'bg-white text-slate-700 rounded-tl-none border-slate-100' : 'bg-emerald-400 text-white rounded-tr-none border-transparent ml-auto'}`}
-                                            >
-                                                <p className={msg.sender === 'tutor' ? 'font-bold' : ''}>{msg.text}</p>
-                                                <span className={`block text-[10px] mt-2 text-right ${msg.sender === 'student' ? 'text-slate-400' : 'text-emerald-100'}`}>{msg.time}</span>
+                                    {activePeerId ? (
+                                        <>
+                                            {/* Chat Header */}
+                                            <div className="p-6 bg-white border-b border-slate-100 flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-12 h-12 bg-blue-100 text-blue-700 rounded-2xl overflow-hidden flex-shrink-0 flex items-center justify-center font-bold">
+                                                        {activePeer?.imageUrl ? (
+                                                            <img src={activePeer.imageUrl} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div>{activePeer?.name?.[0]?.toUpperCase() || 'S'}</div>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-black text-slate-800">{activePeer?.name || 'Student'}</h4>
+                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Student</p>
+                                                    </div>
+                                                </div>
+                                                <button 
+                                                    onClick={async () => {
+                                                        try {
+                                                            const data = await api.fetchProfile(activePeerId);
+                                                            if (data && data.profile) {
+                                                                setSelectedStudent(data.profile);
+                                                            } else {
+                                                                alert("Nie znaleziono profilu tego studenta.");
+                                                            }
+                                                        } catch (err) {
+                                                            console.error("Error fetching student profile:", err);
+                                                            alert("Błąd podczas pobierania profilu.");
+                                                        }
+                                                    }}
+                                                    className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl text-xs font-black transition-all cursor-pointer"
+                                                >
+                                                    Zobacz profil
+                                                </button>
                                             </div>
-                                        ))}
-                                        {isTyping && (
-                                            <div className="bg-white p-4 rounded-[20px] rounded-tl-none border border-slate-100 w-fit flex items-center gap-1.5 shadow-sm">
-                                                <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                                                <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                                                <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+
+                                            <div className="flex-1 p-10 space-y-6 overflow-y-auto">
+                                                {messages.map(msg => (
+                                                    <div 
+                                                        key={msg.id} 
+                                                        className={`p-6 rounded-[30px] shadow-sm max-w-[80%] border ${msg.sender === 'student' ? 'bg-white text-slate-700 rounded-tl-none border-slate-100' : 'bg-emerald-400 text-white rounded-tr-none border-transparent ml-auto'}`}
+                                                    >
+                                                        <p className={msg.sender === 'tutor' ? 'font-bold' : ''}>{msg.text}</p>
+                                                        <span className={`block text-[10px] mt-2 text-right ${msg.sender === 'student' ? 'text-slate-400' : 'text-emerald-100'}`}>{msg.time}</span>
+                                                    </div>
+                                                ))}
+                                                {isTyping && (
+                                                    <div className="bg-white p-4 rounded-[20px] rounded-tl-none border border-slate-100 w-fit flex items-center gap-1.5 shadow-sm">
+                                                        <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                                                        <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                                                        <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
-                                    <div className="p-8 bg-white border-t border-slate-50">
-                                        <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="relative">
-                                            <input 
-                                                type="text" 
-                                                value={chatInput}
-                                                onChange={(e) => setChatInput(e.target.value)}
-                                                placeholder="Napisz do studenta..." 
-                                                className="w-full p-6 bg-slate-50 rounded-full border-none focus:ring-2 focus:ring-emerald-400 outline-none pr-20 text-slate-800" 
-                                            />
-                                            <button 
-                                                type="submit"
-                                                className="absolute right-4 top-1/2 -translate-y-1/2 bg-emerald-400 text-white p-4 rounded-full shadow-lg shadow-emerald-100 cursor-pointer"
-                                            >
-                                                <Send size={20} />
-                                            </button>
-                                        </form>
-                                    </div>
+                                            <div className="p-8 bg-white border-t border-slate-50">
+                                                <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="relative">
+                                                    <input 
+                                                        type="text" 
+                                                        value={chatInput}
+                                                        onChange={(e) => setChatInput(e.target.value)}
+                                                        placeholder="Napisz do studenta..." 
+                                                        className="w-full p-6 bg-slate-50 rounded-full border-none focus:ring-2 focus:ring-emerald-400 outline-none pr-20 text-slate-800" 
+                                                    />
+                                                    <button 
+                                                        type="submit"
+                                                        className="absolute right-4 top-1/2 -translate-y-1/2 bg-emerald-400 text-white p-4 rounded-full shadow-lg shadow-emerald-100 cursor-pointer"
+                                                    >
+                                                        <Send size={20} />
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="flex-1 flex flex-col items-center justify-center p-10 text-center">
+                                            <div className="w-16 h-16 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mb-4">
+                                                <MessageSquare size={28} />
+                                            </div>
+                                            <h4 className="font-black text-slate-800 mb-1">Twój czat jest pusty</h4>
+                                            <p className="text-slate-400 text-sm max-w-xs leading-relaxed">
+                                                Tutaj pojawią się wiadomości od studentów.
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </motion.div>
                         )}
@@ -294,6 +422,98 @@ const TutorDashboard = () => {
                                 )}
                             </motion.div>
                         )}
+
+                        {activeTab === 'profil' && (
+                            <motion.div 
+                                initial={{ opacity: 0, y: 20 }} 
+                                animate={{ opacity: 1, y: 0 }} 
+                                className="max-w-2xl mx-auto bg-white p-12 rounded-[50px] shadow-sm border border-slate-100"
+                            >
+                                <form onSubmit={handleSaveTutorProfile} className="space-y-6">
+                                    <div className="flex justify-center mb-8">
+                                        <div className="relative">
+                                            <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center font-black text-2xl overflow-hidden shadow-inner">
+                                                {user?.imageUrl ? (
+                                                    <img src={user.imageUrl} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    tutorName[0]?.toUpperCase()
+                                                )}
+                                            </div>
+                                            <span className="absolute bottom-0 right-0 bg-emerald-400 text-white p-1.5 rounded-full text-xs font-black shadow">Tutor</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Imię i nazwisko</label>
+                                            <input
+                                                type="text"
+                                                value={tutorName}
+                                                onChange={(e) => setTutorName(e.target.value)}
+                                                className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Stawka za minutę (PLN)</label>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                value={tutorPrice}
+                                                onChange={(e) => setTutorPrice(e.target.value)}
+                                                className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm font-mono font-bold text-emerald-600"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Uczelnia</label>
+                                            <input
+                                                type="text"
+                                                value={tutorUniversity}
+                                                onChange={(e) => setTutorUniversity(e.target.value)}
+                                                className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Przedmiot główny</label>
+                                            <input
+                                                type="text"
+                                                value={tutorSubject}
+                                                onChange={(e) => setTutorSubject(e.target.value)}
+                                                className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Opis o sobie (biografia)</label>
+                                        <textarea
+                                            value={tutorBio}
+                                            onChange={(e) => setTutorBio(e.target.value)}
+                                            className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm h-32 leading-relaxed resize-none"
+                                            required
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={isSavingProfile}
+                                        className="w-full bg-emerald-400 text-white py-5 rounded-2xl font-black text-lg hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-100 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                                    >
+                                        {isSavingProfile ? (
+                                            <>
+                                                <RefreshCw className="animate-spin" size={20} /> Zapisywanie...
+                                            </>
+                                        ) : "Zapisz zmiany w profilu"}
+                                    </button>
+                                </form>
+                            </motion.div>
+                        )}
                     </AnimatePresence>
                 </div>
             </main>
@@ -336,6 +556,57 @@ const TutorDashboard = () => {
                                     className="flex-1 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-lg shadow-lg shadow-emerald-500/20 cursor-pointer flex items-center justify-center gap-2"
                                 >
                                     <Phone size={20} className="animate-spin-slow" /> Odbierz
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Student Profile Modal */}
+            <AnimatePresence>
+                {selectedStudent && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-md bg-slate-900/30">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            className="bg-white w-full max-w-md rounded-[50px] p-12 shadow-2xl relative border border-slate-100"
+                        >
+                            <button onClick={() => setSelectedStudent(null)} className="absolute top-8 right-8 p-2.5 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                                <X size={24} />
+                            </button>
+                            <div className="text-center">
+                                <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-black text-3xl overflow-hidden shadow-inner mx-auto mb-6">
+                                    {selectedStudent.imageUrl ? (
+                                        <img src={selectedStudent.imageUrl} className="w-full h-full object-cover" />
+                                    ) : (
+                                        selectedStudent.name?.[0]?.toUpperCase() || 'S'
+                                    )}
+                                </div>
+                                <span className="bg-blue-50 text-blue-600 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider mb-4 inline-block">
+                                    Student
+                                </span>
+                                <h3 className="text-2xl font-black text-slate-800 mb-2">{selectedStudent.name}</h3>
+                                <p className="text-slate-400 text-sm mb-6">Uczestnik zajęć na EduMinuta</p>
+
+                                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 text-left space-y-4">
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-400 font-bold uppercase tracking-wider">Status portfela:</span>
+                                        <span className="font-mono font-bold text-emerald-600">{(selectedStudent.walletBalance || 0).toFixed(2)} PLN</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-slate-400 font-bold uppercase tracking-wider">Rola systemowa:</span>
+                                        <span className="font-bold text-slate-700">Uczeń</span>
+                                    </div>
+                                </div>
+                                
+                                <button 
+                                    type="button"
+                                    onClick={() => setSelectedStudent(null)}
+                                    className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black text-sm mt-8 hover:bg-slate-800 transition-all cursor-pointer"
+                                >
+                                    Zamknij profil
                                 </button>
                             </div>
                         </motion.div>
