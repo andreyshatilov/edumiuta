@@ -157,7 +157,7 @@ const CallPage = () => {
 
                 frame.on('error', (e) => {
                     console.error("Daily.co Frame Error:", e);
-                    setCallError("Wystąpił błąd wideo-połączenia.");
+                    setCallError(`Wystąpił błąd wideo-połączenia. Szczegóły: ${e.errorMsg || 'Nieznany błąd Daily.co'}`);
                 });
 
                 // WebRTC Collaborative Drawing Listener
@@ -176,7 +176,7 @@ const CallPage = () => {
                 await frame.join({ url: roomUrl });
             } catch (err) {
                 console.error("Failed to initialize Daily call frame:", err);
-                setCallError("Nie udało się uruchomić połączenia wideo.");
+                setCallError(`Nie udało się uruchomić połączenia wideo. Szczegóły: ${err.message || String(err)}`);
             }
         };
 
