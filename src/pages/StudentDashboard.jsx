@@ -139,22 +139,26 @@ const StudentDashboard = () => {
         const loadChatData = async () => {
             try {
                 const convs = await api.fetchConversations(user.id);
-                setConversations(convs);
-                
-                // Set default peer if not set
-                if (convs.length > 0 && !activePeerId) {
-                    setActivePeerId(convs[0].peerId);
+                if (convs && Array.isArray(convs)) {
+                    setConversations(convs);
+                    
+                    // Set default peer if not set
+                    if (convs.length > 0 && !activePeerId) {
+                        setActivePeerId(convs[0].peerId);
+                    }
                 }
 
                 if (activePeerId) {
                     const msgs = await api.fetchChatMessages(activePeerId, user.id);
-                    const mapped = msgs.map(m => ({
-                        id: m.id,
-                        text: m.text,
-                        sender: m.senderId === user.id ? 'student' : 'tutor',
-                        time: new Date(m.timestamp).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
-                    }));
-                    setMessages(mapped);
+                    if (msgs && Array.isArray(msgs)) {
+                        const mapped = msgs.map(m => ({
+                            id: m.id,
+                            text: m.text,
+                            sender: m.senderId === user.id ? 'student' : 'tutor',
+                            time: new Date(m.timestamp).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+                        }));
+                        setMessages(mapped);
+                    }
                 }
             } catch (err) {
                 console.error("Error loading student chat data:", err);
@@ -491,7 +495,7 @@ const StudentDashboard = () => {
                                                     {conv.imageUrl ? (
                                                         <img src={conv.imageUrl} className="w-full h-full object-cover" />
                                                     ) : (
-                                                        <div className="text-emerald-700 font-bold">{conv.name[0]?.toUpperCase()}</div>
+                                                        <div className="text-emerald-700 font-bold">{conv.name?.[0]?.toUpperCase() || 'S'}</div>
                                                     )}
                                                 </div>
                                                 <div className="min-w-0 flex-1">
