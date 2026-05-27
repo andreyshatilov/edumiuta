@@ -280,6 +280,8 @@ app.post('/api/session/end', async (req, res) => {
     console.error('Error ending session in Flotiq:', error.response?.data || error.message);
     res.status(500).json({ error: 'Failed to end session' });
   }
+});
+
 // 5b. GET Fetch session detail by sessionId
 app.get('/api/session/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
