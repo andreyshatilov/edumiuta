@@ -88,6 +88,7 @@ export const RoleProvider = ({ children }) => {
                 setIsSelectingRole(false);
             } catch (error) {
                 console.error("Error creating student profile:", error);
+                alert("Błąd podczas tworzenia profilu studenta: " + (error.response?.data?.error || error.response?.data?.message || error.message));
             } finally {
                 setIsLoadingProfile(false);
             }
@@ -125,6 +126,7 @@ export const RoleProvider = ({ children }) => {
             setIsSettingUpTutor(false);
         } catch (error) {
             console.error("Error creating tutor profile:", error);
+            alert("Błąd podczas tworzenia profilu korepetytora: " + (error.response?.data?.error || error.response?.data?.message || error.message));
         } finally {
             setIsLoadingProfile(false);
         }
@@ -172,7 +174,7 @@ export const RoleProvider = ({ children }) => {
                             </div>
                             <div>
                                 <h3 className="text-2xl font-bold">Chcę uczyć</h3>
-                                <p className="text-sm opacity-80 mt-1">Chcę zarabiać na minucie konsultacji</p>
+                                <p className="text-sm opacity-85 mt-1">Chcę zarabiać na minucie konsultacji</p>
                             </div>
                         </button>
                     </div>
