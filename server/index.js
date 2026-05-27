@@ -446,6 +446,39 @@ app.get('/api/session/history/:clerkId', async (req, res) => {
   }
 });
 
+// 10b. POST Submit tutor review & update rating
+app.post('/api/tutor/review', async (req, res) => {
+  const { tutorClerkId, rating } = req.body;
+  if (!tutorClerkId || rating === undefined) {
+    return res.status(400).json({ error: 'Missing tutorClerkId or rating' });
+  }
+
+  try {
+    const tutorFilter = encodeURIComponent(JSON.stringify({ clerkId: { type: 'equals', filter: tutorClerkId } }));
+    const tutorRes = await flotiqClient.get(`/tutor_profile?filters=${tutorFilter}`);
+    const tutor = tutorRes.data.data[0];
+
+    if (!tutor) {
+      return res.status(404).json({ error: 'Tutor profile not found' });
+    }
+
+    const currentReviews = parseInt(tutor.reviewsCount || 0);
+    const currentRating = parseFloat(tutor.rating || 5.0);
+
+    const newReviews = currentReviews + 1;
+    const newRating = parseFloat(((currentRating * currentReviews + parseFloat(rating)) / newReviews).toFixed(1));
+
+    tutor.reviewsCount = newReviews;
+    tutor.rating = newRating;
+
+    const response = await flotiqClient.put(`/tutor_profile/${tutor.id}`, tutor);
+    res.json(response.data);
+  } catch (error) {
+    console.error('Error submitting tutor review:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to submit review' });
+  }
+});
+
 // 11. POST Seed database with sample tutors for presentation demo
 app.post('/api/db/seed', async (req, res) => {
   const sampleTutors = [

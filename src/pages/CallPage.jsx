@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PhoneOff, RotateCcw, Pencil, Eraser, RefreshCw, AlertCircle } from 'lucide-react';
+import { PhoneOff, RotateCcw, Pencil, Eraser, RefreshCw, AlertCircle, Star } from 'lucide-react';
+import { useUser } from '@clerk/clerk-react';
 import DailyIframe from '@daily-co/daily-js';
 import { api } from '../services/api';
 
@@ -32,6 +33,12 @@ const CallPage = () => {
     const [activeTool, setActiveTool] = useState('draw'); // draw, erase
     const [drawColor, setDrawColor] = useState('#10b981'); // Emerald 500
     const [strokeWidth, setStrokeWidth] = useState(4);
+
+    const { user } = useUser();
+    const [rating, setRating] = useState(0);
+    const [hoverRating, setHoverRating] = useState(0);
+    const [isReviewed, setIsReviewed] = useState(false);
+    const [isSubmittingReview, setIsSubmittingReview] = useState(false);
     
     // Status states
     const [showSummary, setShowSummary] = useState(false);
@@ -584,6 +591,58 @@ const CallPage = () => {
                                     <span className="font-mono font-black text-emerald-500">{finalCost} PLN</span>
                                 </div>
                             </div>
+
+                            {user?.id === session?.studentClerkId && !isReviewed && (
+                                <div className="mb-6 p-6 bg-slate-50 rounded-[32px] border border-slate-100">
+                                    <p className="text-sm font-black text-slate-700 mb-3">Oceń repetytora</p>
+                                    <div className="flex justify-center gap-2 mb-4">
+                                        {[1, 2, 3, 4, 5].map((star) => (
+                                            <button
+                                                key={star}
+                                                type="button"
+                                                onClick={() => setRating(star)}
+                                                onMouseEnter={() => setHoverRating(star)}
+                                                onMouseLeave={() => setHoverRating(0)}
+                                                className="text-yellow-400 hover:scale-125 transition-transform cursor-pointer"
+                                            >
+                                                <Star 
+                                                    size={32} 
+                                                    fill={(hoverRating || rating) >= star ? "currentColor" : "none"} 
+                                                    strokeWidth={2}
+                                                />
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            if (rating === 0) {
+                                                alert("Proszę wybrać ocenę (gwiazdki)!");
+                                                return;
+                                            }
+                                            setIsSubmittingReview(true);
+                                            try {
+                                                await api.submitReview(session.tutorClerkId, rating);
+                                                setIsReviewed(true);
+                                            } catch (err) {
+                                                console.error("Failed to submit review:", err);
+                                                alert("Błąd podczas przesyłania opinii.");
+                                            } finally {
+                                                setIsSubmittingReview(false);
+                                            }
+                                        }}
+                                        disabled={isSubmittingReview}
+                                        className="w-full bg-[#10b981] hover:bg-[#059669] text-white py-3 rounded-xl font-bold text-sm transition-colors cursor-pointer disabled:opacity-50"
+                                    >
+                                        {isSubmittingReview ? "Przesyłanie..." : "Wyślij ocenę"}
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {isReviewed && (
+                                <div className="mb-6 p-4 bg-emerald-50 text-emerald-600 rounded-[20px] font-bold text-xs border border-emerald-100">
+                                    Dziękujemy za ocenę! Pomaga nam to budować lepszą społeczność.
+                                </div>
+                            )}
 
                             <p className="text-xs text-slate-400 mb-8 leading-relaxed">
                                 Nagranie wideo z zapisem Twoich rysunków z tablicy jest zapisywane. Będzie ono dostępne do pobrania i obejrzenia w Twoim panelu przez kolejne 7 dni.

@@ -102,6 +102,12 @@ export const api = {
     return response.data;
   },
 
+  // Submit tutor review and update their average rating
+  submitReview: async (tutorClerkId, rating) => {
+    const response = await apiClient.post('/tutor/review', { tutorClerkId, rating });
+    return response.data;
+  },
+
   // Seed demo tutors for presentation
   seedDatabase: async () => {
     const response = await apiClient.post('/db/seed');

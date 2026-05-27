@@ -23,6 +23,8 @@ const StudentDashboard = () => {
     const [showBlikModal, setShowBlikModal] = useState(false);
     const [blikCode, setBlikCode] = useState('');
     const [blikStep, setBlikStep] = useState('input'); // input, processing, success
+    const [searchQuery, setSearchQuery] = useState('');
+    const [sortBy, setSortBy] = useState('rating'); // rating, price-asc, price-desc
     const navigate = useNavigate();
 
     // Fetch tutors, history and user profile
@@ -57,9 +59,19 @@ const StudentDashboard = () => {
         loadDashboardData();
     }, [user, activeTab]);
 
-    const filteredTutors = filter === 'Wszystkie'
-        ? tutors
-        : tutors.filter(t => t.subject === filter);
+    const filteredTutors = tutors
+        .filter(t => filter === 'Wszystkie' || t.subject === filter)
+        .filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()) || t.university.toLowerCase().includes(searchQuery.toLowerCase()))
+        .sort((a, b) => {
+            if (sortBy === 'rating') {
+                return b.rating - a.rating;
+            } else if (sortBy === 'price-asc') {
+                return a.pricePerMinute - b.pricePerMinute;
+            } else if (sortBy === 'price-desc') {
+                return b.pricePerMinute - a.pricePerMinute;
+            }
+            return 0;
+        });
 
     const handleStartCall = async (tutor) => {
         if (!user) return;
@@ -163,6 +175,34 @@ const StudentDashboard = () => {
                                             {s}
                                         </button>
                                     ))}
+                                </div>
+
+                                {/* Search and Sort controls */}
+                                <div className="flex flex-col md:flex-row gap-4 mb-8">
+                                    <div className="flex-1 relative">
+                                        <input
+                                            type="text"
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            placeholder="Szukaj korepetytora po nazwisku lub uczelni..."
+                                            className="w-full pl-12 pr-6 py-4 bg-white rounded-3xl border border-slate-100 shadow-sm outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm transition-all"
+                                        />
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                        </svg>
+                                    </div>
+                                    <div className="flex gap-3 items-center">
+                                        <span className="text-slate-400 text-xs font-bold uppercase tracking-wider whitespace-nowrap">Sortuj według:</span>
+                                        <select
+                                            value={sortBy}
+                                            onChange={(e) => setSortBy(e.target.value)}
+                                            className="bg-white border border-slate-100 px-6 py-4 rounded-3xl text-sm font-bold text-slate-700 shadow-sm outline-none cursor-pointer focus:ring-2 focus:ring-emerald-400"
+                                        >
+                                            <option value="rating">Najlepsza ocena ⭐</option>
+                                            <option value="price-asc">Cena: od najniższej 💰</option>
+                                            <option value="price-desc">Cena: od najwyższej 📈</option>
+                                        </select>
+                                    </div>
                                 </div>
 
                                 {/* Loader / Grid */}
