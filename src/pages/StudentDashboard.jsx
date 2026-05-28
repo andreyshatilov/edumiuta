@@ -430,7 +430,7 @@ const StudentDashboard = () => {
                         {activeTab === 'historia' && (
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="max-w-4xl mx-auto">
                                 <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2">
-                                    <Calendar className="text-emerald-500" /> Historia lekcji
+                                    <Clock className="text-emerald-500" /> Historia lekcji
                                 </h2>
                                 
                                 {isLoading ? (
