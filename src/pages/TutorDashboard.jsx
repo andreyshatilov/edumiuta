@@ -35,6 +35,14 @@ const TutorDashboard = () => {
     const [activePeerId, setActivePeerId] = useState(null);
     const [selectedStudent, setSelectedStudent] = useState(null);
 
+    // Calendar availability states
+    const [selectedDay, setSelectedDay] = useState(28);
+    const [availableSlots, setAvailableSlots] = useState({
+        28: ["10:00-12:00", "14:00-16:00", "16:00-18:00"],
+        29: ["08:00-10:00", "10:00-12:00", "14:00-16:00"],
+        30: ["12:00-14:00", "16:00-18:00", "18:00-20:00"]
+    });
+
     const handleSendMessage = async () => {
         if (!chatInput.trim() || !user || !activePeerId) return;
         const textToSend = chatInput;
@@ -226,7 +234,7 @@ const TutorDashboard = () => {
                 <div className="max-w-4xl mx-auto">
                     <header className="flex justify-between items-center mb-10">
                         <h1 className="text-4xl font-black text-slate-800 capitalize tracking-tighter">
-                            {activeTab === 'kalendarz' ? 'Historia lekcji' : activeTab}
+                            {activeTab === 'kalendarz' ? 'Kalendarz' : activeTab === 'historia' ? 'Historia lekcji' : activeTab}
                         </h1>
                         
                         <div className="flex items-center gap-3">
@@ -382,6 +390,93 @@ const TutorDashboard = () => {
                         )}
 
                         {activeTab === 'kalendarz' && (
+                            <motion.div 
+                                initial={{ opacity: 0, y: 20 }} 
+                                animate={{ opacity: 1, y: 0 }} 
+                                className="max-w-4xl mx-auto bg-white p-10 rounded-[50px] shadow-sm border border-slate-100 flex flex-col md:flex-row gap-10"
+                            >
+                                {/* Left Column: Calendar Grid */}
+                                <div className="flex-1">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h3 className="font-black text-xl text-slate-800">Maj 2026</h3>
+                                        <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Planer dostępności</span>
+                                    </div>
+                                    
+                                    {/* Days of Week Header */}
+                                    <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-slate-400 uppercase mb-3">
+                                        <span>Pn</span><span>Wt</span><span>Śr</span><span>Cz</span><span>Pi</span><span>So</span><span>Ni</span>
+                                    </div>
+                                    
+                                    {/* Days Grid (May 2026 starts on Friday, so 4 empty days) */}
+                                    <div className="grid grid-cols-7 gap-2">
+                                        {Array.from({ length: 4 }).map((_, i) => (
+                                            <div key={`empty-${i}`} className="aspect-square"></div>
+                                        ))}
+                                        {Array.from({ length: 31 }).map((_, i) => {
+                                            const day = i + 1;
+                                            const isSelected = selectedDay === day;
+                                            const hasSlots = availableSlots[day] && availableSlots[day].length > 0;
+                                            return (
+                                                <button
+                                                    type="button"
+                                                    key={`day-${day}`}
+                                                    onClick={() => setSelectedDay(day)}
+                                                    className={`aspect-square rounded-2xl font-black text-sm transition-all cursor-pointer flex flex-col items-center justify-center relative ${isSelected ? 'bg-emerald-400 text-white shadow-lg shadow-emerald-100 scale-105' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
+                                                >
+                                                    {day}
+                                                    {hasSlots && !isSelected && (
+                                                        <span className="absolute bottom-1.5 w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                
+                                {/* Right Column: Availability Hours */}
+                                <div className="w-full md:w-80 bg-slate-50/50 p-8 rounded-[40px] border border-slate-50 flex flex-col justify-between">
+                                    <div>
+                                        <div className="mb-6">
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Wybrany dzień</p>
+                                            <h4 className="font-black text-xl text-slate-800">{selectedDay} Maja 2026</h4>
+                                        </div>
+                                        
+                                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-4">Godziny dostępności</label>
+                                        <div className="space-y-2">
+                                            {["08:00-10:00", "10:00-12:00", "12:00-14:00", "14:00-16:00", "16:00-18:00", "18:00-20:00"].map(slot => {
+                                                const daySlots = availableSlots[selectedDay] || [];
+                                                const isActive = daySlots.includes(slot);
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        key={slot}
+                                                        onClick={() => {
+                                                            const newSlots = isActive 
+                                                                ? daySlots.filter(s => s !== slot) 
+                                                                : [...daySlots, slot];
+                                                            setAvailableSlots(prev => ({
+                                                                ...prev,
+                                                                [selectedDay]: newSlots
+                                                            }));
+                                                        }}
+                                                        className={`w-full p-4 rounded-2xl text-xs font-bold text-left transition-all border flex justify-between items-center cursor-pointer ${isActive ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}
+                                                    >
+                                                        <span>{slot}</span>
+                                                        <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`}></span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="mt-8 bg-emerald-50/30 p-4 rounded-2xl border border-emerald-100/30 text-[10px] text-slate-500 leading-relaxed">
+                                        💡 <strong>Wskazówka:</strong> Klikaj na godziny, aby przełączać swój status dostępności. Zielone godziny oznaczają, że jesteś gotowy do lekcji.
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {activeTab === 'historia' && (
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
                                 {isLoading ? (
                                     <div className="flex justify-center py-10">

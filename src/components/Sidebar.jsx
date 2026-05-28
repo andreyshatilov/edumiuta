@@ -16,6 +16,7 @@ const Sidebar = ({ role, activeTab, setActiveTab }) => {
         { id: 'czat', label: 'Czaty', icon: <MessageSquare size={20} /> },
         { id: 'zarobki', label: 'Zarobki', icon: <Wallet size={20} /> },
         { id: 'kalendarz', label: 'Kalendarz', icon: <Calendar size={20} /> },
+        { id: 'historia', label: 'Historia', icon: <Clock size={20} /> },
         { id: 'profil', label: 'Profil', icon: <User size={20} /> },
     ];
 
