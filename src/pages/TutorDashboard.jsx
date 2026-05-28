@@ -211,6 +211,13 @@ const TutorDashboard = () => {
         return `${mins} min ${secs} sek`;
     };
 
+    const formatSessionDate = (startTime) => {
+        if (!startTime) return 'Brak daty';
+        const d = new Date(startTime);
+        if (isNaN(d.getTime())) return 'Brak daty';
+        return `${d.toLocaleDateString('pl-PL')} o ${d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}`;
+    };
+
     return (
         <div className="min-h-screen bg-[#f8fafc] flex">
             <Sidebar role="tutor" activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -389,9 +396,9 @@ const TutorDashboard = () => {
                                         {history.map(session => (
                                             <div key={session.id} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                                                 <div>
-                                                    <h3 className="font-black text-slate-800 text-lg">Sesja #{session.id.slice(-6)}</h3>
+                                                    <h3 className="font-black text-slate-800 text-lg">Sesja #{session.id ? session.id.slice(-6) : ''}</h3>
                                                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">
-                                                        {new Date(session.startTime).toLocaleDateString('pl-PL')} o {new Date(session.startTime).toLocaleTimeString('pl-PL', {hour: '2-digit', minute:'2-digit'})}
+                                                        {formatSessionDate(session.startTime)}
                                                     </p>
                                                     <div className="flex items-center gap-4 mt-2">
                                                         <span className="bg-slate-50 px-3 py-1 rounded-full text-xs font-bold text-slate-500">
