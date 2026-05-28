@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Filter, Phone, PhoneOff, RefreshCw, Star, Wallet, Calendar, Clock, Download, X } from 'lucide-react';
+import { Send, Filter, Phone, PhoneOff, RefreshCw, Star, Wallet, Calendar, Clock, Download, X, MessageSquare } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import Sidebar from '../components/Sidebar';
 import { api } from '../services/api';
