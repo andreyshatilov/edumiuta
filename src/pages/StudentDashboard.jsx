@@ -1095,7 +1095,13 @@ const StudentDashboard = () => {
                         )}
 
                         {activeTab === 'portfel' && (
-                            <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <motion.div 
+                                initial={{ opacity: 0, y: 15 }} 
+                                animate={{ opacity: 1, y: 0 }} 
+                                exit={{ opacity: 0, y: -15 }}
+                                transition={{ duration: 0.25 }}
+                                className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 w-full"
+                            >
                                 {/* Left Column: BLIK Top up */}
                                 <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 h-fit">
                                     <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2">
@@ -1186,7 +1192,7 @@ const StudentDashboard = () => {
                                         </div>
                                     )}
                                 </motion.div>
-                            </div>
+                            </motion.div>
                         )}
 
                         {activeTab === 'historia' && (

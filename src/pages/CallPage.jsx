@@ -57,6 +57,7 @@ const CallPage = () => {
     const canvasRef = useRef(null);
     const callContainerRef = useRef(null);
     const callFrameRef = useRef(null);
+    const jitsiApiRef = useRef(null);
     const isDrawingRef = useRef(false);
     const startXRef = useRef(0);
     const startYRef = useRef(0);
@@ -276,6 +277,82 @@ const CallPage = () => {
             }
         };
     }, [session]);
+
+    // 2b. Initialize Jitsi Meet external API
+    useEffect(() => {
+        if (!session || !session.dailyRoomUrl || !session.dailyRoomUrl.includes('meet.jit.si')) {
+            if (jitsiApiRef.current) {
+                try {
+                    jitsiApiRef.current.dispose();
+                } catch (e) {}
+                jitsiApiRef.current = null;
+            }
+            return;
+        }
+
+        const initJitsi = () => {
+            if (jitsiApiRef.current) return; // already initialized
+
+            const roomName = session.dailyRoomUrl.split('/').pop() || `studybuddy_${Date.now()}`;
+            console.log("Initializing Jitsi Meet External API for room:", roomName);
+
+            const container = document.getElementById('jitsi-container');
+            if (!container) {
+                setTimeout(initJitsi, 100);
+                return;
+            }
+
+            try {
+                if (window.JitsiMeetExternalAPI) {
+                    const domain = 'meet.jit.si';
+                    const options = {
+                        roomName: roomName,
+                        width: '100%',
+                        height: '100%',
+                        parentNode: container,
+                        userInfo: {
+                            displayName: user?.firstName || user?.username || 'Użytkownik'
+                        },
+                        configOverwrite: {
+                            startWithAudioMuted: false,
+                            startWithVideoMuted: false,
+                            prejoinPageEnabled: false,
+                            disableDeepLinking: true
+                        },
+                        interfaceConfigOverwrite: {
+                            SHOW_JITSI_WATERMARK: false,
+                            SHOW_WATERMARK_FOR_GUESTS: false
+                        }
+                    };
+
+                    const apiInstance = new window.JitsiMeetExternalAPI(domain, options);
+                    jitsiApiRef.current = apiInstance;
+                    setIsJoined(true);
+                } else {
+                    console.log("JitsiMeetExternalAPI script not loaded yet, creating dynamically.");
+                    const script = document.createElement('script');
+                    script.src = 'https://meet.jit.si/external_api.js';
+                    script.async = true;
+                    script.onload = () => initJitsi();
+                    document.body.appendChild(script);
+                }
+            } catch (err) {
+                console.error("Error creating Jitsi Meet instance:", err);
+            }
+        };
+
+        const timer = setTimeout(initJitsi, 150);
+
+        return () => {
+            clearTimeout(timer);
+            if (jitsiApiRef.current) {
+                try {
+                    jitsiApiRef.current.dispose();
+                } catch (e) {}
+                jitsiApiRef.current = null;
+            }
+        };
+    }, [session, user]);
 
     // 3. Call Duration billing timer
     useEffect(() => {
@@ -614,6 +691,15 @@ const CallPage = () => {
                 console.error("Error leaving room:", err);
             }
         }
+        // Dispose of Jitsi Meet
+        if (jitsiApiRef.current) {
+            try {
+                jitsiApiRef.current.dispose();
+            } catch (err) {
+                console.error("Error disposing Jitsi:", err);
+            }
+            jitsiApiRef.current = null;
+        }
         
         try {
             // End session on backend database & perform wallet transactions
@@ -829,15 +915,11 @@ const CallPage = () => {
                     />
                 </div>
 
-                {/* 2. Daily Video Call / Iframe (Right) */}
+                {/* 2. Daily Video Call / Jitsi (Right) */}
                 <div className="w-full lg:w-[480px] bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col relative h-[300px] lg:h-auto">
                     {session && session.dailyRoomUrl && session.dailyRoomUrl.includes('meet.jit.si') ? (
-                        // Jitsi fallback
-                        <iframe 
-                            src={session.dailyRoomUrl}
-                            className="w-full h-full border-none"
-                            allow="camera; microphone; fullscreen; display-capture; autoplay"
-                        />
+                        // Jitsi fallback container
+                        <div id="jitsi-container" className="w-full h-full rounded-[30px] overflow-hidden" />
                     ) : (
                         // Live Daily Prebuilt Container
                         <div ref={callContainerRef} className="w-full h-full" />

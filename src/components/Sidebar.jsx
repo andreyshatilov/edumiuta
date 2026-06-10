@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Wallet, Calendar, MessageSquare, Clock, User } from 'lucide-react';
 import { useUser, UserButton } from '@clerk/clerk-react';
+import { motion } from 'framer-motion';
 
 const Sidebar = ({ role, activeTab, setActiveTab }) => {
     const { user } = useUser();
@@ -27,18 +28,29 @@ const Sidebar = ({ role, activeTab, setActiveTab }) => {
         <aside className="w-72 bg-white border-r border-slate-100 p-6 hidden md:flex flex-col h-screen sticky top-0">
             <Link to="/" className="text-2xl font-black text-emerald-500 mb-10 px-4 tracking-tighter">StudyBuddy</Link>
             <nav className="space-y-2 flex-1">
-                {menuItems.map(item => (
-                    <button
-                        key={item.id}
-                        onClick={() => setActiveTab(item.id)}
-                        className={`w-full flex items-center gap-4 px-6 py-4 rounded-[24px] transition-all duration-300 ${activeTab === item.id
-                                ? 'bg-emerald-400 text-white shadow-lg shadow-emerald-200 font-bold scale-105'
-                                : 'text-slate-400 hover:bg-slate-50 hover:text-emerald-500'
+                {menuItems.map(item => {
+                    const isActive = activeTab === item.id;
+                    return (
+                        <button
+                            key={item.id}
+                            onClick={() => setActiveTab(item.id)}
+                            className={`relative w-full flex items-center gap-4 px-6 py-4 rounded-[24px] transition-all duration-300 ${
+                                isActive ? 'text-white font-bold scale-105' : 'text-slate-400 hover:bg-slate-50/50 hover:text-emerald-500'
                             }`}
-                    >
-                        {item.icon} {item.label}
-                    </button>
-                ))}
+                        >
+                            {isActive && (
+                                <motion.div
+                                    layoutId="sidebar-active-pill"
+                                    className="absolute inset-0 bg-emerald-400 rounded-[24px] shadow-lg shadow-emerald-200/30 -z-10"
+                                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                                />
+                            )}
+                            <span className="relative z-10 flex items-center gap-4">
+                                {item.icon} {item.label}
+                            </span>
+                        </button>
+                    );
+                })}
             </nav>
             <div className="px-4 py-3 border-t border-slate-100 my-4 space-y-1.5">
                 <Link to="/about" className="block text-[11px] font-bold text-slate-400 hover:text-emerald-500 transition-colors">O nas 🚀</Link>
