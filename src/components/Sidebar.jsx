@@ -26,7 +26,7 @@ const Sidebar = ({ role, activeTab, setActiveTab }) => {
 
     return (
         <aside className="w-72 bg-white border-r border-slate-100 p-6 hidden md:flex flex-col h-screen sticky top-0">
-            <Link to="/" className="text-2xl font-black text-emerald-500 mb-10 px-4 tracking-tighter">StudyBuddy</Link>
+            <Link to="/" className="text-2xl font-black mb-10 px-4 tracking-tighter"><span className="text-emerald-500">Study</span><span className="text-blue-500">Buddy</span></Link>
             <nav className="space-y-2 flex-1">
                 {menuItems.map(item => {
                     const isActive = activeTab === item.id;

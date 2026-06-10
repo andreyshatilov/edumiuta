@@ -68,10 +68,10 @@ const LandingPage = () => {
             <header className="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center bg-white/30 backdrop-blur-md sticky top-0 z-40 border-b border-white/20">
                 <div className="flex items-center gap-8">
                     <span 
-                        className="text-2xl font-black text-emerald-500 tracking-tighter italic cursor-pointer select-none hover:scale-102 transition-transform"
+                        className="text-2xl font-black tracking-tighter italic cursor-pointer select-none hover:scale-102 transition-transform"
                         onClick={() => navigate('/')}
                     >
-                        StudyBuddy
+                        <span className="text-emerald-500">Study</span><span className="text-blue-500">Buddy</span>
                     </span>
                     <nav className="hidden md:flex items-center gap-6 text-sm font-bold text-slate-500">
                         <button 
@@ -299,7 +299,7 @@ const LandingPage = () => {
             <footer className="bg-white border-t border-slate-100 mt-12 py-12">
                 <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="flex flex-col items-center md:items-start">
-                        <span className="text-xl font-black text-emerald-500 tracking-tighter italic">StudyBuddy</span>
+                        <span className="text-xl font-black tracking-tighter italic"><span className="text-emerald-500">Study</span><span className="text-blue-500">Buddy</span></span>
                         <p className="text-slate-400 text-xs mt-1">Nauka na minuty. Płacisz za sekundy.</p>
                     </div>
                     <div className="flex gap-8 text-sm font-bold text-slate-500">

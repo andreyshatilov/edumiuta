@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PhoneOff, RotateCcw, Pencil, Eraser, RefreshCw, AlertCircle, Star, ArrowUpRight, Minus, Square, Circle, Type, Image as ImageIcon, Undo2, Redo2 } from 'lucide-react';
+import { PhoneOff, RotateCcw, Pencil, Eraser, RefreshCw, AlertCircle, Star, ArrowUpRight, Minus, Square, Circle, Type, Image as ImageIcon, Undo2, Redo2, Grid, Download } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import DailyIframe from '@daily-co/daily-js';
 import { api } from '../services/api';
@@ -46,6 +46,10 @@ const CallPage = () => {
     const [finalCost, setFinalCost] = useState('0.00');
     const [isJoined, setIsJoined] = useState(false);
     const [callError, setCallError] = useState(null);
+    const [showGrid, setShowGrid] = useState(false);
+    const [studentWallet, setStudentWallet] = useState(null);
+    const [lowBalanceAlert, setLowBalanceAlert] = useState(false);
+    const [criticalBalanceAlert, setCriticalBalanceAlert] = useState(false);
 
     // Undo/Redo States
     const undoStackRef = useRef([]);
@@ -90,6 +94,22 @@ const CallPage = () => {
 
         loadSessionDetails();
     }, [sessionId, session]);
+
+    // Fetch student profile wallet balance on session load
+    useEffect(() => {
+        if (!session || !session.studentClerkId) return;
+        const fetchStudentWallet = async () => {
+            try {
+                const res = await api.fetchProfile(session.studentClerkId);
+                if (res && res.profile) {
+                    setStudentWallet(parseFloat(res.profile.walletBalance || 0));
+                }
+            } catch (err) {
+                console.error("Failed to fetch student wallet:", err);
+            }
+        };
+        fetchStudentWallet();
+    }, [session]);
 
     // 1b. Connect to WebSocket server for whiteboard sync fallback
     useEffect(() => {
@@ -364,6 +384,32 @@ const CallPage = () => {
         return () => clearInterval(interval);
     }, [isJoined]);
 
+    // Real-time balance guard
+    useEffect(() => {
+        if (!isJoined || studentWallet === null) return;
+        
+        // Max seconds student can afford
+        const maxSeconds = Math.floor((studentWallet / pricePerMinute) * 60);
+        
+        if (seconds >= maxSeconds) {
+            alert("Sesja zakończona automatycznie: Brak środków na koncie studenta.");
+            handleEndCall();
+            return;
+        }
+
+        const remainingSeconds = maxSeconds - seconds;
+        if (remainingSeconds <= 120 && remainingSeconds > 60) {
+            setLowBalanceAlert(true);
+            setCriticalBalanceAlert(false);
+        } else if (remainingSeconds <= 60) {
+            setLowBalanceAlert(false);
+            setCriticalBalanceAlert(true);
+        } else {
+            setLowBalanceAlert(false);
+            setCriticalBalanceAlert(false);
+        }
+    }, [seconds, isJoined, studentWallet, pricePerMinute]);
+
     // 4. Whiteboard Canvas setup
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -574,6 +620,35 @@ const CallPage = () => {
         }
     };
 
+    const handleDownloadBoard = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        try {
+            // Create a temporary canvas to fill background white
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            // Fill solid white
+            tempCtx.fillStyle = '#ffffff';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+            // Draw current canvas over it
+            tempCtx.drawImage(canvas, 0, 0);
+
+            const dataUrl = tempCanvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = `studybuddy-tablica-${sessionId || 'sesja'}.png`;
+            link.href = dataUrl;
+            link.click();
+        } catch (err) {
+            console.error("Error downloading canvas:", err);
+            alert("Nie udało się pobrać tablicy.");
+        }
+    };
+
     const handleUndo = () => {
         const canvas = canvasRef.current;
         if (!canvas || undoStackRef.current.length === 0) return;
@@ -738,10 +813,22 @@ const CallPage = () => {
 
     return (
         <div className="h-screen w-screen bg-slate-950 text-white flex flex-col overflow-hidden">
+            {/* Dynamic Grid Styles */}
+            <style>{`
+                .canvas-grid {
+                    background-size: 30px 30px;
+                    background-image: 
+                        linear-gradient(to right, #e2e8f0 1.5px, transparent 1.5px),
+                        linear-gradient(to bottom, #e2e8f0 1.5px, transparent 1.5px);
+                }
+            `}</style>
+
             {/* Top Bar */}
             <header className="h-20 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <span className="text-xl font-black text-emerald-400 tracking-tighter">StudyBuddy</span>
+                    <span className="text-xl font-black tracking-tighter">
+                        <span className="text-emerald-400">Study</span><span className="text-blue-400">Buddy</span>
+                    </span>
                     <span className="bg-slate-800 text-xs px-3 py-1 rounded-full text-slate-400 font-bold uppercase tracking-wider">
                         Sesja: #{sessionId?.slice(-6) || 'Aktywna'}
                     </span>
@@ -765,6 +852,30 @@ const CallPage = () => {
                     </div>
                 </div>
             </header>
+
+            {/* Low Balance Warning Banners */}
+            <AnimatePresence>
+                {lowBalanceAlert && (
+                    <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="bg-amber-500 text-slate-900 font-bold px-6 py-2.5 text-center text-sm flex items-center justify-center gap-2 z-20"
+                    >
+                        <AlertCircle size={16} /> Saldo portfela studenta jest niskie. Pozostało mniej niż 2 minuty rozmowy.
+                    </motion.div>
+                )}
+                {criticalBalanceAlert && (
+                    <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="bg-rose-600 text-white font-black px-6 py-2.5 text-center text-sm flex items-center justify-center gap-2 animate-pulse z-20"
+                    >
+                        <AlertCircle size={16} /> UWAGA! Środki na wyczerpaniu. Połączenie zostanie automatycznie zakończone za chwilę.
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Split screen content area */}
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
@@ -892,6 +1003,26 @@ const CallPage = () => {
                         >
                             <RotateCcw size={16} />
                         </button>
+
+                        <div className="w-px h-6 bg-slate-800"></div>
+
+                        {/* Toggle Grid */}
+                        <button 
+                            onClick={() => setShowGrid(prev => !prev)}
+                            className={`p-2 rounded-xl transition-all cursor-pointer ${showGrid ? 'bg-emerald-500 text-white shadow-lg' : 'hover:bg-slate-850 text-slate-400'}`}
+                            title="Przełącz siatkę"
+                        >
+                            <Grid size={18} />
+                        </button>
+
+                        {/* Download Board */}
+                        <button 
+                            onClick={handleDownloadBoard}
+                            className="p-2 rounded-xl hover:bg-slate-850 text-slate-400 transition-all cursor-pointer"
+                            title="Pobierz tablicę jako PNG"
+                        >
+                            <Download size={18} />
+                        </button>
                     </div>
 
                     {/* Canvas drawing surface */}
@@ -911,7 +1042,7 @@ const CallPage = () => {
                         onTouchStart={startDrawing}
                         onTouchMove={draw}
                         onTouchEnd={stopDrawing}
-                        className="flex-1 cursor-crosshair bg-white"
+                        className={`flex-1 cursor-crosshair bg-white ${showGrid ? 'canvas-grid' : ''}`}
                     />
                 </div>
 

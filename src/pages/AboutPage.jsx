@@ -10,7 +10,7 @@ const AboutPage = () => {
         <div className="min-h-screen bg-[#f0f9ff] text-slate-800 font-sans flex flex-col justify-between selection:bg-emerald-200">
             {/* Header */}
             <header className="max-w-7xl mx-auto px-6 py-6 w-full flex justify-between items-center bg-white/30 backdrop-blur-md sticky top-0 z-40 border-b border-white/20">
-                <span className="text-2xl font-black text-emerald-500 tracking-tighter italic">StudyBuddy</span>
+                <span className="text-2xl font-black tracking-tighter italic"><span className="text-emerald-500">Study</span><span className="text-blue-500">Buddy</span></span>
                 <button 
                     onClick={() => navigate(-1)}
                     className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-black px-6 py-2.5 rounded-full transition-all text-sm cursor-pointer shadow-md hover:scale-105"
@@ -35,7 +35,7 @@ const AboutPage = () => {
                     </div>
 
                     <h1 className="text-4xl md:text-5xl font-black text-slate-900 mb-6 tracking-tight">
-                        O nas – Studencki Startup <span className="text-emerald-500 italic">StudyBuddy</span>
+                        O nas – Studencki Startup <span className="italic"><span className="text-emerald-500">Study</span><span className="text-blue-500">Buddy</span></span>
                     </h1>
 
                     <p className="text-lg text-slate-500 mb-10 max-w-2xl leading-relaxed mx-auto">
