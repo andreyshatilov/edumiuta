@@ -6,6 +6,124 @@ import { useUser } from '@clerk/clerk-react';
 import Sidebar from '../components/Sidebar';
 import { api } from '../services/api';
 
+// Audio helpers using Web Audio API
+const playChimeSound = () => {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const now = ctx.currentTime;
+        
+        // Soft chime Note 1 (E5)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(659.25, now);
+        gain1.gain.setValueAtTime(0.12, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.6);
+
+        // Note 2 (A5)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(880.00, now + 0.12);
+        gain2.gain.setValueAtTime(0.10, now + 0.12);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(now + 0.12);
+        osc2.stop(now + 0.8);
+    } catch (e) {
+        console.error("Audio failed:", e);
+    }
+};
+
+const playBubbleSound = () => {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const now = ctx.currentTime;
+        
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(450, now);
+        osc.frequency.exponentialRampToValueAtTime(1300, now + 0.12); // slide up
+        gain.gain.setValueAtTime(0.10, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.12);
+    } catch (e) {
+        console.error("Audio failed:", e);
+    }
+};
+
+// Pure Framer Motion Confetti explosion
+const Confetti = ({ active }) => {
+    if (!active) return null;
+    const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#ec4899', '#8b5cf6'];
+    const particles = Array.from({ length: 50 }).map((_, i) => {
+        const angle = Math.random() * Math.PI * 2;
+        const velocity = 40 + Math.random() * 90;
+        const x = Math.cos(angle) * velocity;
+        const y = Math.sin(angle) * velocity - 60; // bias upward
+        const size = 6 + Math.random() * 8;
+        const rotation = Math.random() * 360;
+        const delay = Math.random() * 0.15;
+        const duration = 0.8 + Math.random() * 1.2;
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        
+        return {
+            id: i,
+            x,
+            y,
+            size,
+            rotation,
+            delay,
+            duration,
+            color
+        };
+    });
+
+    return (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden flex items-center justify-center z-50">
+            {particles.map(p => (
+                <motion.div
+                    key={p.id}
+                    initial={{ x: 0, y: 0, opacity: 1, scale: 0, rotate: 0 }}
+                    animate={{ 
+                        x: p.x, 
+                        y: p.y + 120, // gravity fall
+                        opacity: 0,
+                        scale: [0, 1, 0.7, 0],
+                        rotate: p.rotation + 360
+                    }}
+                    transition={{
+                        delay: p.delay,
+                        duration: p.duration,
+                        ease: "easeOut"
+                    }}
+                    style={{
+                        position: 'absolute',
+                        width: p.size,
+                        height: p.size,
+                        backgroundColor: p.color,
+                        borderRadius: Math.random() > 0.5 ? '50%' : '3px'
+                    }}
+                />
+            ))}
+        </div>
+    );
+};
+
 const StudentDashboard = () => {
     const { user } = useUser();
     const displayName = user?.firstName || "Student";
@@ -805,6 +923,9 @@ const StudentDashboard = () => {
                 if (data.type === 'message') {
                     setMessages(prev => {
                         if (prev.some(m => m.id === data.message.id)) return prev;
+                        if (data.message.senderId !== user.id) {
+                            playBubbleSound();
+                        }
                         return [...prev, data.message];
                     });
                 } else if (data.type === 'typing') {
@@ -2214,6 +2335,7 @@ const StudentDashboard = () => {
                                                             if (updatedProfile) {
                                                                 setWalletBalance(updatedProfile.walletBalance || 0.00);
                                                                 setBlikStep('success');
+                                                                playChimeSound();
                                                                 setTimeout(() => {
                                                                     setShowBlikModal(false);
                                                                 }, 1500);
@@ -2245,7 +2367,8 @@ const StudentDashboard = () => {
                             )}
 
                             {blikStep === 'success' && (
-                                <div className="py-8">
+                                <div className="py-8 relative overflow-hidden">
+                                    <Confetti active={true} />
                                     <motion.div
                                         initial={{ scale: 0.5, opacity: 0 }}
                                         animate={{ scale: 1, opacity: 1 }}

@@ -6,6 +6,30 @@ import { useUser } from '@clerk/clerk-react';
 import Sidebar from '../components/Sidebar';
 import { api } from '../services/api';
 
+const playBubbleSound = () => {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const now = ctx.currentTime;
+        
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(450, now);
+        osc.frequency.exponentialRampToValueAtTime(1300, now + 0.12); // slide up
+        gain.gain.setValueAtTime(0.10, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.12);
+    } catch (e) {
+        console.error("Audio failed:", e);
+    }
+};
+
 const TutorDashboard = () => {
     const { user } = useUser();
     const [activeTab, setActiveTab] = useState('czat');
@@ -736,6 +760,9 @@ const TutorDashboard = () => {
                 if (data.type === 'message') {
                     setMessages(prev => {
                         if (prev.some(m => m.id === data.message.id)) return prev;
+                        if (data.message.senderId !== user.id) {
+                            playBubbleSound();
+                        }
                         return [...prev, data.message];
                     });
                 } else if (data.type === 'typing') {
