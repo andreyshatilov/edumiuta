@@ -63,7 +63,7 @@ const LandingPage = () => {
     };
 
     return (
-        <div className="min-h-screen bg-[#f0f9ff] text-slate-800 font-sans selection:bg-emerald-200">
+        <div className="min-h-screen bg-gradient-to-br from-[#f0f9ff] via-[#e8f4f8] to-[#f0fdf4] text-slate-800 font-sans selection:bg-emerald-200">
             {/* Top Navigation */}
             <header className="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center bg-white/30 backdrop-blur-md sticky top-0 z-40 border-b border-white/20">
                 <div className="flex items-center gap-8">
@@ -186,8 +186,8 @@ const LandingPage = () => {
                             { icon: <PencilLine className="text-emerald-500" size={32} />, title: "Tablica w czasie rzeczywistym", desc: "Rysujcie, piszcie i rozwiązujcie zadania na wspólnej, interaktywnej tablicy synced peer-to-peer." },
                             { icon: <ShieldCheck className="text-purple-500" size={32} />, title: "Nagrania na 7 dni", desc: "Wszystkie lekcje wraz z zapisem tablicy i wideo są nagrywane. Możesz je pobrać lub obejrzeć przez tydzień." }
                         ].map((feature, i) => (
-                            <div key={i} className="bg-white p-8 rounded-[35px] border border-slate-100 shadow-sm hover:shadow-xl transition-all duration-300">
-                                <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center mb-6">
+                            <div key={i} className="bg-white p-8 rounded-[35px] border border-slate-100 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 group">
+                                <div className="w-14 h-14 bg-slate-50 group-hover:bg-emerald-50 rounded-2xl flex items-center justify-center mb-6 transition-colors duration-300">
                                     {feature.icon}
                                 </div>
                                 <h3 className="text-xl font-black text-slate-800 mb-2">{feature.title}</h3>
@@ -198,7 +198,7 @@ const LandingPage = () => {
                 </section>
 
                 {/* How it Works */}
-                <section className="mb-24 bg-white p-16 rounded-[60px] border border-slate-100 shadow-sm">
+                <section className="mb-24 bg-gradient-to-br from-white to-slate-50/50 p-16 rounded-[60px] border border-slate-100 shadow-sm">
                     <h2 className="text-4xl font-black text-center text-slate-900 mb-16">Jak to działa? 🛠️</h2>
                     <div className="grid md:grid-cols-2 gap-16">
                         <div>
@@ -296,7 +296,7 @@ const LandingPage = () => {
             </main>
 
             {/* Premium Footer */}
-            <footer className="bg-white border-t border-slate-100 mt-12 py-12">
+            <footer className="bg-gradient-to-t from-slate-50 to-white border-t border-slate-100 mt-12 py-16">
                 <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="flex flex-col items-center md:items-start">
                         <span className="text-xl font-black tracking-tighter italic"><span className="text-emerald-500">Study</span><span className="text-blue-500">Buddy</span></span>
