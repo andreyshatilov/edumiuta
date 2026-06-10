@@ -53,10 +53,22 @@ export const api = {
     return response.data;
   },
 
-  // Initiate real-time video session
-  startSession: async (studentClerkId, tutorClerkId) => {
-    const response = await apiClient.post('/session/start', { studentClerkId, tutorClerkId });
-    return response.data; // returns session object { id, dailyRoomUrl, studentClerkId, tutorRate }
+  // Initiate real-time video session (creates request with status 'requested')
+  startSession: async (sessionDetails) => {
+    const response = await apiClient.post('/session/start', sessionDetails);
+    return response.data; // returns requested session object
+  },
+
+  // Accept a requested session (tutor accepts, starts the call)
+  acceptSession: async (sessionId) => {
+    const response = await apiClient.post('/session/accept', { sessionId });
+    return response.data;
+  },
+
+  // Cancel a pending session request (student cancels before acceptance)
+  cancelSession: async (sessionId) => {
+    const response = await apiClient.post('/session/cancel', { sessionId });
+    return response.data;
   },
 
   // Complete video session & calculate charges
@@ -96,6 +108,12 @@ export const api = {
     return response.data;
   },
 
+  // Subscribe to newsletter
+  subscribeNewsletter: async (email) => {
+    const response = await apiClient.post('/newsletter/subscribe', { email });
+    return response.data;
+  },
+
   // Deposit funds to wallet via BLIK
   depositFunds: async (clerkId, amount) => {
     const response = await apiClient.post('/wallet/deposit', { clerkId, amount });
@@ -129,6 +147,110 @@ export const api = {
   // Send message
   sendChatMessage: async (senderId, receiverId, text, senderRole) => {
     const response = await apiClient.post('/chat/send', { senderId, receiverId, text, senderRole });
+    return response.data;
+  },
+
+  // Request booking slot
+  requestBooking: async (bookingDetails) => {
+    const response = await apiClient.post('/booking/request', bookingDetails);
+    return response.data;
+  },
+
+  // Accept a pending booking request
+  acceptBooking: async (sessionId) => {
+    const response = await apiClient.post('/booking/accept', { sessionId });
+    return response.data;
+  },
+
+  // Decline a pending booking request
+  declineBooking: async (sessionId) => {
+    const response = await apiClient.post('/booking/decline', { sessionId });
+    return response.data;
+  },
+
+  // Start scheduled booking (provisions room, returns session)
+  startScheduledSession: async (sessionId) => {
+    const response = await apiClient.post('/booking/start', { sessionId });
+    return response.data;
+  },
+
+  // Fetch bookings for student/tutor
+  fetchBookings: async (clerkId) => {
+    const response = await apiClient.get(`/booking/list/${clerkId}`);
+    return response.data;
+  },
+
+  // Request payout
+  requestPayout: async (payoutDetails) => {
+    const response = await apiClient.post('/payout/request', payoutDetails);
+    return response.data;
+  },
+
+  // Fetch payout history
+  fetchPayoutHistory: async (clerkId) => {
+    const response = await apiClient.get(`/payout/history/${clerkId}`);
+    return response.data;
+  },
+
+  // Upload chat file attachment
+  uploadChatFile: async (formData) => {
+    const response = await apiClient.post('/chat/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  // Upload whiteboard background image
+  uploadWhiteboardBackground: async (formData) => {
+    const response = await apiClient.post('/whiteboard/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  // Fetch user notifications
+  fetchNotifications: async (clerkId) => {
+    const response = await apiClient.get(`/notifications/${clerkId}`);
+    return response.data;
+  },
+
+  // Mark single notification as read
+  markNotificationRead: async (notificationId) => {
+    const response = await apiClient.post(`/notifications/read/${notificationId}`);
+    return response.data;
+  },
+
+  // Mark all user notifications as read
+  markAllNotificationsRead: async (clerkId) => {
+    const response = await apiClient.post(`/notifications/read-all/${clerkId}`);
+    return response.data;
+  },
+
+  // Fetch transactions history
+  fetchTransactions: async (clerkId) => {
+    const response = await apiClient.get(`/transactions/${clerkId}`);
+    return response.data;
+  },
+
+  // Submit a tutor review
+  submitReview: async (reviewData) => {
+    const response = await apiClient.post('/reviews', reviewData);
+    return response.data;
+  },
+
+  // Fetch tutor reviews
+  fetchTutorReviews: async (tutorClerkId) => {
+    const response = await apiClient.get(`/tutors/${tutorClerkId}/reviews`);
+    return response.data;
+  },
+
+  // Fetch reviews submitted by a student
+  fetchStudentReviews: async (studentClerkId) => {
+    const response = await apiClient.get(`/reviews/student/${studentClerkId}`);
     return response.data;
   },
 

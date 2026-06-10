@@ -1,12 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { User, Star, LogIn, Clock, ShieldCheck, Video, PencilLine, Zap, CheckCircle } from 'lucide-react';
 import { useUser, SignInButton, UserButton } from '@clerk/clerk-react';
+import { api } from '../services/api';
 
 const LandingPage = () => {
     const { isSignedIn, user } = useUser();
     const navigate = useNavigate();
+    const [newsletterEmail, setNewsletterEmail] = useState('');
+    const [isSubscribing, setIsSubscribing] = useState(false);
+    const [subscribeMessage, setSubscribeMessage] = useState('');
+    const [subscribeStatus, setSubscribeStatus] = useState(null); // 'success', 'error'
 
     const handleDashboardRedirect = () => {
         const role = user?.unsafeMetadata?.role;
@@ -14,6 +19,31 @@ const LandingPage = () => {
             navigate('/tutor');
         } else {
             navigate('/student');
+        }
+    };
+
+    const handleSubscribe = async (e) => {
+        e.preventDefault();
+        if (!newsletterEmail.trim() || isSubscribing) return;
+        setIsSubscribing(true);
+        setSubscribeStatus(null);
+        setSubscribeMessage('');
+        try {
+            const res = await api.subscribeNewsletter(newsletterEmail.trim());
+            if (res && res.success) {
+                setSubscribeStatus('success');
+                setSubscribeMessage(res.message || 'Pomyślnie zapisano do newslettera!');
+                setNewsletterEmail('');
+            } else {
+                setSubscribeStatus('error');
+                setSubscribeMessage('Wystąpił błąd. Spróbuj ponownie.');
+            }
+        } catch (err) {
+            console.error(err);
+            setSubscribeStatus('error');
+            setSubscribeMessage(err.response?.data?.error || 'Nie udało się zapisać.');
+        } finally {
+            setIsSubscribing(false);
         }
     };
 
@@ -34,7 +64,7 @@ const LandingPage = () => {
         <div className="min-h-screen bg-[#f0f9ff] text-slate-800 font-sans selection:bg-emerald-200">
             {/* Top Navigation */}
             <header className="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center bg-white/30 backdrop-blur-md sticky top-0 z-40 border-b border-white/20">
-                <span className="text-2xl font-black text-emerald-500 tracking-tighter italic">EduMinuta</span>
+                <span className="text-2xl font-black text-emerald-500 tracking-tighter italic">StudyBuddy</span>
                 <div>
                     {isSignedIn ? (
                         <div className="flex items-center gap-4">
@@ -115,7 +145,7 @@ const LandingPage = () => {
                                         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 blur-2xl rounded-full translate-x-10 -translate-y-10"></div>
                                         <Star size={56} className="mx-auto mb-4 group-hover:rotate-12 transition-transform" />
                                         <h2 className="text-3xl font-black mb-1">Nauczaj</h2>
-                                        <p className="opacity-90 font-bold">Zarabiaj на każdej minucie rozmowy</p>
+                                        <p className="opacity-90 font-bold">Zarabiaj na każdej minucie rozmowy</p>
                                     </button>
                                 </SignInButton>
                             </>
@@ -125,7 +155,7 @@ const LandingPage = () => {
 
                 {/* Features Highlights */}
                 <section className="mb-24">
-                    <h2 className="text-4xl font-black text-center text-slate-900 mb-12">Dlaczego EduMinuta? 💡</h2>
+                    <h2 className="text-4xl font-black text-center text-slate-900 mb-12">Dlaczego StudyBuddy? 💡</h2>
                     <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
                         {[
                             { icon: <Clock className="text-blue-500" size={32} />, title: "Rozliczenie sekundowe", desc: "Nie kupujesz pełnych godzin. Rozmowa trwała 3 minuty i 15 sekund? Płacisz tylko za ten czas." },
@@ -208,20 +238,37 @@ const LandingPage = () => {
                 <section className="w-full max-w-2xl bg-white p-12 rounded-[60px] shadow-xl border border-blue-50 mx-auto text-center">
                     <h3 className="text-3xl font-black text-slate-800 mb-2">Chcesz dowiedzieć się więcej?</h3>
                     <p className="text-slate-500 mb-8">Zostaw swój mail, a prześlemy Ci prezentację dla inwestorów oraz kod na 15 darmowych minut.</p>
-                    <div className="space-y-4">
-                        <input type="email" placeholder="Wpisz swój email..." className="w-full p-6 bg-slate-50 rounded-3xl border-none focus:ring-2 focus:ring-emerald-400 outline-none text-lg text-center font-bold text-slate-700" />
+                    <form onSubmit={handleSubscribe} className="space-y-4">
+                        <input 
+                            type="email" 
+                            required
+                            value={newsletterEmail}
+                            onChange={(e) => setNewsletterEmail(e.target.value)}
+                            placeholder="Wpisz swój email..." 
+                            className="w-full p-6 bg-slate-50 rounded-3xl border-none focus:ring-2 focus:ring-emerald-400 outline-none text-lg text-center font-bold text-slate-700" 
+                        />
                         <div className="flex justify-center gap-6 py-2">
                             <label className="flex items-center gap-2 cursor-pointer text-slate-600 font-bold">
-                                <input type="radio" name="role" className="w-5 h-5 accent-emerald-500" /> Jestem Studentem
+                                <input type="radio" name="role" defaultChecked className="w-5 h-5 accent-emerald-500" /> Jestem Studentem
                             </label>
                             <label className="flex items-center gap-2 cursor-pointer text-slate-600 font-bold">
                                 <input type="radio" name="role" className="w-5 h-5 accent-emerald-500" /> Jestem Korepetytorem
                             </label>
                         </div>
-                        <button className="w-full bg-slate-900 text-white py-6 rounded-3xl font-black text-xl hover:bg-emerald-500 transition-colors shadow-lg shadow-slate-200 cursor-pointer">
-                            Zapisz mnie do newslettera
+                        <button 
+                            type="submit"
+                            disabled={isSubscribing}
+                            className="w-full bg-slate-900 text-white py-6 rounded-3xl font-black text-xl hover:bg-emerald-500 disabled:opacity-50 transition-colors shadow-lg shadow-slate-200 cursor-pointer"
+                        >
+                            {isSubscribing ? 'Zapisywanie...' : 'Zapisz mnie do newslettera'}
                         </button>
-                    </div>
+                        
+                        {subscribeMessage && (
+                            <p className={`mt-4 text-sm font-bold ${subscribeStatus === 'success' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                {subscribeMessage}
+                            </p>
+                        )}
+                    </form>
                 </section>
             </main>
         </div>

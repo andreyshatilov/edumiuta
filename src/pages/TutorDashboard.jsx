@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Filter, Phone, PhoneOff, RefreshCw, Star, Wallet, Calendar, Clock, Download, X, MessageSquare } from 'lucide-react';
+import { Send, Filter, Phone, PhoneOff, RefreshCw, Star, Wallet, Calendar, Clock, Download, X, MessageSquare, Bell } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import Sidebar from '../components/Sidebar';
 import { api } from '../services/api';
@@ -28,6 +28,10 @@ const TutorDashboard = () => {
     const [tutorSubject, setTutorSubject] = useState('');
     const [tutorPrice, setTutorPrice] = useState(1.50);
     const [tutorBio, setTutorBio] = useState('');
+    const [tutorLinkedin, setTutorLinkedin] = useState('');
+    const [tutorVideoGreetingUrl, setTutorVideoGreetingUrl] = useState('');
+    const [tutorCertificates, setTutorCertificates] = useState('');
+    const [tutorExperience, setTutorExperience] = useState('');
     const [isSavingProfile, setIsSavingProfile] = useState(false);
 
     // Real Chat variables
@@ -35,28 +39,420 @@ const TutorDashboard = () => {
     const [activePeerId, setActivePeerId] = useState(null);
     const [selectedStudent, setSelectedStudent] = useState(null);
 
-    // Calendar availability states
-    const [selectedDay, setSelectedDay] = useState(28);
-    const [availableSlots, setAvailableSlots] = useState({
-        28: ["10:00-12:00", "14:00-16:00", "16:00-18:00"],
-        29: ["08:00-10:00", "10:00-12:00", "14:00-16:00"],
-        30: ["12:00-14:00", "16:00-18:00", "18:00-20:00"]
-    });
+    // Calendar availability & schedule states
+    const todayStr = new Date().toISOString().split('T')[0];
+    const [selectedDateStr, setSelectedDateStr] = useState(todayStr);
+    const [currentMonth, setCurrentMonth] = useState(new Date()); // Starts on current month dynamically
+    const [availableSlots, setAvailableSlots] = useState({});
 
+    // Bookings list states
+    const [bookings, setBookings] = useState([]);
+    const [isBookingsLoading, setIsBookingsLoading] = useState(false);
+
+    // Payout request states
+    const [payoutAmount, setPayoutAmount] = useState('');
+    const [payoutIban, setPayoutIban] = useState('');
+    const [payouts, setPayouts] = useState([]);
+    const [isPayoutsLoading, setIsPayoutsLoading] = useState(false);
+    const [isSubmittingPayout, setIsSubmittingPayout] = useState(false);
+
+    // Transactions and sub-tab states
+    const [transactions, setTransactions] = useState([]);
+    const [isTransactionsLoading, setIsTransactionsLoading] = useState(false);
+    const [earningsSubTab, setEarningsSubTab] = useState('transactions'); // 'transactions' | 'payouts'
+
+    // Chat WS and typing indicators
+    const chatWsRef = useRef(null);
+    const typingTimeoutRef = useRef(null);
+    const [peerIsTyping, setPeerIsTyping] = useState(false);
+    const [isUploadingFile, setIsUploadingFile] = useState(false);
+
+    // Notifications state & WS
+    const notificationsWsRef = useRef(null);
+    const [notifications, setNotifications] = useState([]);
+    const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+    const [toasts, setToasts] = useState([]);
+
+    const printReceipt = (session) => {
+        const htmlContent = `
+          <!DOCTYPE html>
+          <html lang="pl">
+          <head>
+            <meta charset="UTF-8">
+            <title>Rachunek za lekcję - StudyBuddy</title>
+            <style>
+              body {
+                font-family: 'Inter', sans-serif;
+                margin: 0;
+                padding: 40px;
+                color: #334155;
+                background-color: #ffffff;
+              }
+              .invoice-box {
+                max-width: 800px;
+                margin: auto;
+                padding: 30px;
+                border: 1px solid #f1f5f9;
+                border-radius: 24px;
+                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+              }
+              .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 2px solid #f1f5f9;
+                padding-bottom: 20px;
+                margin-bottom: 30px;
+              }
+              .logo {
+                font-size: 28px;
+                font-weight: 900;
+                color: #10b981;
+                letter-spacing: -0.05em;
+              }
+              .title {
+                font-size: 24px;
+                font-weight: 800;
+                text-align: right;
+                color: #1e293b;
+              }
+              .details-grid {
+                display: grid;
+                grid-template-cols: 1fr 1fr;
+                gap: 20px;
+                margin-bottom: 40px;
+              }
+              .details-card {
+                background-color: #f8fafc;
+                padding: 20px;
+                border-radius: 16px;
+                border: 1px solid #e2e8f0;
+              }
+              .details-card h3 {
+                margin-top: 0;
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: #94a3b8;
+                margin-bottom: 10px;
+              }
+              .details-card p {
+                margin: 5px 0;
+                font-size: 14px;
+                font-weight: 700;
+              }
+              table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 40px;
+              }
+              th {
+                background-color: #f8fafc;
+                text-align: left;
+                padding: 12px;
+                font-size: 12px;
+                text-transform: uppercase;
+                color: #64748b;
+                border-bottom: 2px solid #e2e8f0;
+              }
+              td {
+                padding: 15px 12px;
+                font-size: 14px;
+                border-bottom: 1px solid #f1f5f9;
+              }
+              .total-section {
+                text-align: right;
+                font-size: 18px;
+                font-weight: 800;
+                color: #1e293b;
+              }
+              .total-amount {
+                font-size: 28px;
+                color: #3b82f6;
+                font-weight: 900;
+                margin-top: 5px;
+              }
+              .footer {
+                margin-top: 50px;
+                text-align: center;
+                font-size: 11px;
+                color: #94a3b8;
+                border-top: 1px solid #f1f5f9;
+                padding-top: 20px;
+              }
+              @media print {
+                body { padding: 0; }
+                .invoice-box { box-shadow: none; border: none; }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="invoice-box">
+              <div class="header">
+                <div class="logo">StudyBuddy</div>
+                <div class="title">Rachunek za lekcję</div>
+              </div>
+              
+              <div class="details-grid">
+                <div class="details-card">
+                  <h3>Sprzedawca (Tutor)</h3>
+                  <p>ID Korepetytora: ${session.tutorClerkId}</p>
+                  <p>Przedmiot: ${session.subject}</p>
+                  <p>Stawka: ${(session.tutorRate || 1.50).toFixed(2)} PLN / minuta</p>
+                </div>
+                <div class="details-card">
+                  <h3>Nabywca (Student)</h3>
+                  <p>Imię studenta: ${session.studentName || 'Uczeń'}</p>
+                  <p>ID Studenta: ${session.studentClerkId}</p>
+                  <p>Data: ${new Date(session.startTime).toLocaleDateString('pl-PL')}</p>
+                </div>
+              </div>
+              
+              <table>
+                <thead>
+                  <tr>
+                    <th>Opis usługi</th>
+                    <th>Czas trwania</th>
+                    <th>Stawka min.</th>
+                    <th>Suma</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Indywidualna konsultacja online na platformie StudyBuddy</td>
+                    <td>${Math.floor((session.durationSeconds || 0) / 60)} min ${session.durationSeconds % 60} sek</td>
+                    <td>${(session.tutorRate || 1.50).toFixed(2)} PLN</td>
+                    <td>${(session.cost || 0).toFixed(2)} PLN</td>
+                  </tr>
+                </tbody>
+              </table>
+              
+              <div class="total-section">
+                Suma do zapłaty (opłacono z portfela)
+                <div class="total-amount">${(session.cost || 0).toFixed(2)} PLN</div>
+              </div>
+              
+              <div class="footer">
+                Dziękujemy za korzystanie ze StudyBuddy! Dokładamy wszelkich starań, aby Twoja nauka była jak najbardziej efektywna.<br>
+                StudyBuddy Inc. • Generowane automatycznie • Status: OPŁACONE
+              </div>
+            </div>
+            <script>
+              window.onload = function() {
+                window.print();
+              }
+            </script>
+          </body>
+          </html>
+        `;
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+    };
+
+    const loadBookings = async () => {
+        if (!user) return;
+        setIsBookingsLoading(true);
+        try {
+            const res = await api.fetchBookings(user.id);
+            setBookings(res);
+        } catch (err) {
+            console.error("Error fetching bookings:", err);
+        } finally {
+            setIsBookingsLoading(false);
+        }
+    };
+
+    const handleAcceptBooking = async (sessionId) => {
+        try {
+            await api.acceptBooking(sessionId);
+            alert("Zaakceptowano rezerwację!");
+            loadBookings();
+        } catch (err) {
+            console.error("Error accepting booking:", err);
+            alert("Nie udało się zaakceptować rezerwacji.");
+        }
+    };
+
+    const handleDeclineBooking = async (sessionId) => {
+        try {
+            await api.declineBooking(sessionId);
+            alert("Odrzucono rezerwację.");
+            loadBookings();
+        } catch (err) {
+            console.error("Error declining booking:", err);
+            alert("Nie udało się odrzucić rezerwacji.");
+        }
+    };
+
+    const handleStartScheduledSession = async (sessionId) => {
+        try {
+            const session = await api.startScheduledSession(sessionId);
+            navigate(`/call/${session.id}`, { state: { session } });
+        } catch (err) {
+            console.error("Error starting scheduled session:", err);
+            alert("Nie udało się rozpocząć zaplanowanej lekcji.");
+        }
+    };
+
+    const loadPayoutHistory = async () => {
+        if (!user) return;
+        setIsPayoutsLoading(true);
+        try {
+            const res = await api.fetchPayoutHistory(user.id);
+            setPayouts(res);
+        } catch (err) {
+            console.error("Error fetching payout history:", err);
+        } finally {
+            setIsPayoutsLoading(false);
+        }
+    };
+
+    const handleRequestPayout = async (e) => {
+        e.preventDefault();
+        if (!payoutAmount || !payoutIban || !user || isSubmittingPayout) return;
+        
+        const amount = parseFloat(payoutAmount);
+        if (isNaN(amount) || amount <= 0) {
+            alert("Podaj prawidłową kwotę.");
+            return;
+        }
+
+        if (amount > totalEarnings) {
+            alert("Niewystarczające środki w saldzie zarobków.");
+            return;
+        }
+
+        setIsSubmittingPayout(true);
+        try {
+            await api.requestPayout({
+                tutorClerkId: user.id,
+                amount,
+                iban: payoutIban
+            });
+            alert("Pomyślnie wysłano wniosek o wypłatę!");
+            setPayoutAmount('');
+            loadProfileData(); // reload total earnings
+            loadPayoutHistory();
+        } catch (err) {
+            console.error("Error requesting payout:", err);
+            alert(err.response?.data?.error || "Nie udało się zrealizować wypłaty.");
+        } finally {
+            setIsSubmittingPayout(false);
+        }
+    };
+
+    // Poll for bookings and payouts when tabs are open
+    useEffect(() => {
+        if (!user) return;
+        if (activeTab === 'kalendarz') {
+            loadBookings();
+            const interval = setInterval(loadBookings, 5000);
+            return () => clearInterval(interval);
+        }
+    }, [user, activeTab]);
+
+    useEffect(() => {
+        if (!user) return;
+        if (activeTab === 'zarobki') {
+            loadPayoutHistory();
+        }
+    }, [user, activeTab]);
+
+    // Chat handlers
     const handleSendMessage = async () => {
         if (!chatInput.trim() || !user || !activePeerId) return;
         const textToSend = chatInput;
         setChatInput('');
+
+        // Stop typing
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+        }
+        if (chatWsRef.current && chatWsRef.current.readyState === 1) {
+            chatWsRef.current.send(JSON.stringify({
+                type: 'typing',
+                senderId: user.id,
+                isTyping: false
+            }));
+        }
+
         try {
-            await api.sendChatMessage(user.id, activePeerId, textToSend, 'tutor');
-            setMessages(prev => [...prev, {
-                id: Date.now(),
+            const response = await api.sendChatMessage(user.id, activePeerId, textToSend, 'tutor');
+            const newMsg = {
+                id: response.id || Date.now(),
                 text: textToSend,
                 sender: 'tutor',
                 time: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
-            }]);
+            };
+            setMessages(prev => [...prev, newMsg]);
+
+            if (chatWsRef.current && chatWsRef.current.readyState === 1) {
+                chatWsRef.current.send(JSON.stringify({
+                    type: 'message',
+                    message: newMsg
+                }));
+            }
         } catch (err) {
             console.error("Error sending message:", err);
+        }
+    };
+
+    const handleChatInputChange = (e) => {
+        setChatInput(e.target.value);
+        if (chatWsRef.current && chatWsRef.current.readyState === 1) {
+            chatWsRef.current.send(JSON.stringify({
+                type: 'typing',
+                senderId: user.id,
+                isTyping: true
+            }));
+
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+
+            typingTimeoutRef.current = setTimeout(() => {
+                if (chatWsRef.current && chatWsRef.current.readyState === 1) {
+                    chatWsRef.current.send(JSON.stringify({
+                        type: 'typing',
+                        senderId: user.id,
+                        isTyping: false
+                    }));
+                }
+            }, 2000);
+        }
+    };
+
+    const handleAttachFile = async (e) => {
+        const file = e.target.files[0];
+        if (!file || !user || !activePeerId) return;
+        setIsUploadingFile(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const fileData = await api.uploadChatFile(formData);
+            const textToSend = fileData.url;
+            const response = await api.sendChatMessage(user.id, activePeerId, textToSend, 'tutor');
+            
+            const newMsg = {
+                id: response.id || Date.now(),
+                text: textToSend,
+                sender: 'tutor',
+                time: new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+            };
+            setMessages(prev => [...prev, newMsg]);
+
+            if (chatWsRef.current && chatWsRef.current.readyState === 1) {
+                chatWsRef.current.send(JSON.stringify({
+                    type: 'message',
+                    message: newMsg
+                }));
+            }
+        } catch (err) {
+            console.error("Error uploading file:", err);
+            alert("Nie udało się przesłać pliku.");
+        } finally {
+            setIsUploadingFile(false);
         }
     };
 
@@ -72,7 +468,11 @@ const TutorDashboard = () => {
                 university: tutorUniversity,
                 subject: tutorSubject,
                 pricePerMinute: parseFloat(tutorPrice),
-                bio: tutorBio
+                bio: tutorBio,
+                linkedin: tutorLinkedin,
+                videoGreetingUrl: tutorVideoGreetingUrl,
+                certificates: tutorCertificates,
+                experience: tutorExperience
             });
             alert("Profil zaktualizowany pomyślnie!");
         } catch (error) {
@@ -99,12 +499,48 @@ const TutorDashboard = () => {
                 setTutorSubject(data.profile.subject || '');
                 setTutorPrice(data.profile.pricePerMinute || 1.50);
                 setTutorBio(data.profile.bio || '');
+                setTutorLinkedin(data.profile.linkedin || '');
+                setTutorVideoGreetingUrl(data.profile.videoGreetingUrl || '');
+                setTutorCertificates(data.profile.certificates || '');
+                setTutorExperience(data.profile.experience || '');
+
+                // Parse availability slots
+                let parsedSlots = {};
+                try {
+                    if (data.profile.availableSlots) {
+                        parsedSlots = JSON.parse(data.profile.availableSlots);
+                    }
+                } catch (e) {
+                    console.error("Error parsing available slots:", e);
+                }
+                setAvailableSlots(parsedSlots);
             }
 
             // Fetch history
             const sessionHistory = await api.fetchSessionHistory(user.id);
             if (sessionHistory) {
                 setHistory(sessionHistory);
+            }
+
+            // Fetch notifications
+            const userNotifications = await api.fetchNotifications(user.id);
+            if (userNotifications && Array.isArray(userNotifications)) {
+                setNotifications(userNotifications);
+            }
+
+            // Fetch transactions
+            if (activeTab === 'zarobki') {
+                setIsTransactionsLoading(true);
+                try {
+                    const res = await api.fetchTransactions(user.id);
+                    if (res && Array.isArray(res)) {
+                        setTransactions(res);
+                    }
+                } catch (err) {
+                    console.error("Error loading tutor transactions:", err);
+                } finally {
+                    setIsTransactionsLoading(false);
+                }
             }
         } catch (error) {
             console.error("Error loading tutor profile:", error);
@@ -116,6 +552,110 @@ const TutorDashboard = () => {
     useEffect(() => {
         loadProfileData();
     }, [user, activeTab]);
+
+    // Helper to synthesize a high-fidelity E5-G5 chime tone using Web Audio API
+    const playNotificationSound = () => {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = new AudioContext();
+            
+            const playNote = (frequency, startTime, duration) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                
+                osc.frequency.setValueAtTime(frequency, startTime);
+                osc.type = 'sine';
+                
+                gain.gain.setValueAtTime(0, startTime);
+                gain.gain.linearRampToValueAtTime(0.3, startTime + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+                
+                osc.start(startTime);
+                osc.stop(startTime + duration);
+            };
+            
+            const now = ctx.currentTime;
+            playNote(659.25, now, 0.4);       // E5
+            playNote(783.99, now + 0.15, 0.45); // G5
+        } catch (err) {
+            console.warn('Audio playback failed or blocked:', err);
+        }
+    };
+
+    const handleMarkRead = async (id) => {
+        try {
+            await api.markNotificationRead(id);
+            setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+        } catch (err) {
+            console.error("Error marking notification read:", err);
+        }
+    };
+
+    const handleMarkAllRead = async () => {
+        try {
+            await api.markAllNotificationsRead(user.id);
+            setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        } catch (err) {
+            console.error("Error marking all notifications read:", err);
+        }
+    };
+
+    // WebSocket listener for real-time notifications
+    useEffect(() => {
+        if (!user) return;
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.hostname === 'localhost' ? 'localhost:3001' : window.location.host;
+        const wsUrl = `${protocol}//${host}/api/sync?roomId=notifications_${user.id}`;
+
+        const ws = new WebSocket(wsUrl);
+        notificationsWsRef.current = ws;
+
+        ws.onopen = () => {
+            console.log("Notifications WS connected to room:", `notifications_${user.id}`);
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const eventData = JSON.parse(event.data);
+                if (eventData.type === 'notification' && eventData.data) {
+                    const newNotification = eventData.data;
+                    
+                    setNotifications(prev => {
+                        if (prev.some(n => n.id === newNotification.id)) return prev;
+                        return [newNotification, ...prev];
+                    });
+
+                    // Trigger visual toast
+                    const toastId = Date.now() + Math.random();
+                    setToasts(prev => [...prev, { ...newNotification, id: toastId }]);
+
+                    // Play E5-G5 chime
+                    playNotificationSound();
+
+                    // Auto-dismiss toast
+                    setTimeout(() => {
+                        setToasts(prev => prev.filter(t => t.id !== toastId));
+                    }, 6000);
+                }
+            } catch (err) {
+                console.error("Error parsing notification WS message:", err);
+            }
+        };
+
+        ws.onclose = () => {
+            console.log("Notifications WS disconnected");
+        };
+
+        return () => {
+            if (ws) {
+                ws.close();
+            }
+        };
+    }, [user]);
 
     // Active session polling (incoming call listener)
     useEffect(() => {
@@ -137,17 +677,21 @@ const TutorDashboard = () => {
         return () => clearInterval(interval);
     }, [user, isOnline, incomingSession]);
 
-    // Real Chat messages polling loop
+    // Chat WebSocket lifecycle & initial loader
     useEffect(() => {
-        if (!user || activeTab !== 'czat') return;
+        if (!user || activeTab !== 'czat') {
+            if (chatWsRef.current) {
+                chatWsRef.current.close();
+                chatWsRef.current = null;
+            }
+            return;
+        }
 
-        const loadChatData = async () => {
+        const loadInitialChat = async () => {
             try {
                 const convs = await api.fetchConversations(user.id);
                 if (convs && Array.isArray(convs)) {
                     setConversations(convs);
-                    
-                    // Set default peer if not set
                     if (convs.length > 0 && !activePeerId) {
                         setActivePeerId(convs[0].peerId);
                     }
@@ -166,14 +710,70 @@ const TutorDashboard = () => {
                     }
                 }
             } catch (err) {
-                console.error("Error loading chat data:", err);
+                console.error("Error loading initial chat:", err);
             }
         };
 
-        loadChatData();
-        const interval = setInterval(loadChatData, 3000);
-        return () => clearInterval(interval);
+        loadInitialChat();
+
+        if (!activePeerId) return;
+
+        const sortedIds = [user.id, activePeerId].sort().join('_');
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.hostname === 'localhost' ? 'localhost:3001' : window.location.host;
+        const wsUrl = `${protocol}//${host}/api/sync?roomId=chat_${sortedIds}`;
+
+        const ws = new WebSocket(wsUrl);
+        chatWsRef.current = ws;
+
+        ws.onopen = () => {
+            console.log("Chat WS connected room:", sortedIds);
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'message') {
+                    setMessages(prev => {
+                        if (prev.some(m => m.id === data.message.id)) return prev;
+                        return [...prev, data.message];
+                    });
+                } else if (data.type === 'typing') {
+                    if (data.senderId === activePeerId) {
+                        setPeerIsTyping(data.isTyping);
+                    }
+                }
+            } catch (err) {
+                console.error("Error parsing chat WS message:", err);
+            }
+        };
+
+        ws.onclose = () => {
+            console.log("Chat WS disconnected");
+        };
+
+        return () => {
+            if (ws) {
+                ws.close();
+            }
+        };
     }, [user, activeTab, activePeerId]);
+
+    // Poll for conversations update periodically
+    useEffect(() => {
+        if (!user || activeTab !== 'czat') return;
+        const interval = setInterval(async () => {
+            try {
+                const convs = await api.fetchConversations(user.id);
+                if (convs && Array.isArray(convs)) {
+                    setConversations(convs);
+                }
+            } catch (e) {
+                console.error("Error polling conversations:", e);
+            }
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [user, activeTab]);
 
     const handleToggleStatus = async () => {
         if (!user || isToggling) return;
@@ -190,11 +790,20 @@ const TutorDashboard = () => {
         }
     };
 
-    const handleAcceptCall = () => {
+    const handleAcceptCall = async () => {
         if (!incomingSession) return;
-        navigate(`/call/${incomingSession.id}`, {
-            state: { session: incomingSession }
-        });
+        setIsRespondingCall(true);
+        try {
+            const acceptedSession = await api.acceptSession(incomingSession.id);
+            navigate(`/call/${acceptedSession.id}`, {
+                state: { session: acceptedSession }
+            });
+        } catch (error) {
+            console.error("Error accepting session request:", error);
+            alert("Błąd podczas akceptowania zapytania.");
+        } finally {
+            setIsRespondingCall(false);
+        }
     };
 
     const handleDeclineCall = async () => {
@@ -254,6 +863,20 @@ const TutorDashboard = () => {
                             >
                                 <RefreshCw size={18} />
                             </button>
+
+                            {/* Bell notification button */}
+                            <button
+                                onClick={() => setIsNotificationsOpen(true)}
+                                className="relative bg-white p-2.5 rounded-full hover:bg-slate-50 border border-slate-100 text-slate-400 hover:text-emerald-500 hover:scale-105 cursor-pointer transition-all duration-300 flex items-center justify-center"
+                                title="Powiadomienia"
+                            >
+                                <Bell size={18} />
+                                {notifications.filter(n => !n.read).length > 0 && (
+                                    <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black w-5.5 h-5.5 rounded-full flex items-center justify-center border-2 border-white animate-pulse">
+                                        {notifications.filter(n => !n.read).length}
+                                    </span>
+                                )}
+                            </button>
                         </div>
                     </header>
 
@@ -303,7 +926,11 @@ const TutorDashboard = () => {
                                                     </div>
                                                     <div>
                                                         <h4 className="font-black text-slate-800">{activePeer?.name || 'Student'}</h4>
-                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Student</p>
+                                                        {peerIsTyping ? (
+                                                            <span className="text-[10px] text-emerald-500 font-black animate-pulse">Pisze...</span>
+                                                        ) : (
+                                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Student</p>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <button 
@@ -327,38 +954,81 @@ const TutorDashboard = () => {
                                             </div>
 
                                             <div className="flex-1 p-10 space-y-6 overflow-y-auto">
-                                                {messages.map(msg => (
-                                                    <div 
-                                                        key={msg.id} 
-                                                        className={`p-6 rounded-[30px] shadow-sm max-w-[80%] border ${msg.sender === 'student' ? 'bg-white text-slate-700 rounded-tl-none border-slate-100' : 'bg-emerald-400 text-white rounded-tr-none border-transparent ml-auto'}`}
-                                                    >
-                                                        <p className={msg.sender === 'tutor' ? 'font-bold' : ''}>{msg.text}</p>
-                                                        <span className={`block text-[10px] mt-2 text-right ${msg.sender === 'student' ? 'text-slate-400' : 'text-emerald-100'}`}>{msg.time}</span>
-                                                    </div>
-                                                ))}
-                                                {isTyping && (
-                                                    <div className="bg-white p-4 rounded-[20px] rounded-tl-none border border-slate-100 w-fit flex items-center gap-1.5 shadow-sm">
-                                                        <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                                                        <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                                                        <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                                                    </div>
-                                                )}
+                                                {messages.map(msg => {
+                                                    const isUploadedFile = msg.text?.startsWith('/uploads/');
+                                                    const isImage = isUploadedFile && msg.text.match(/\.(jpeg|jpg|gif|png|webp|svg)$/i);
+                                                    const baseUploadUrl = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') : 'http://localhost:3001';
+                                                    const fullFileUrl = isUploadedFile ? `${baseUploadUrl}${msg.text}` : '';
+
+                                                    return (
+                                                        <div 
+                                                            key={msg.id} 
+                                                            className={`p-6 rounded-[30px] shadow-sm max-w-[80%] border ${msg.sender === 'student' ? 'bg-white text-slate-700 rounded-tl-none border-slate-100' : 'bg-emerald-400 text-white rounded-tr-none border-transparent ml-auto'}`}
+                                                        >
+                                                            {isUploadedFile ? (
+                                                                <div>
+                                                                    {isImage ? (
+                                                                        <img 
+                                                                            src={fullFileUrl} 
+                                                                            alt="Załącznik graficzny" 
+                                                                            className="max-w-full rounded-2xl max-h-60 object-cover border border-slate-100"
+                                                                        />
+                                                                    ) : (
+                                                                        <div className={`flex items-center gap-3 p-4 rounded-2xl text-xs ${msg.sender === 'tutor' ? 'bg-emerald-500/20 text-white border border-emerald-300/30' : 'bg-slate-50 text-slate-700 border border-slate-150'}`}>
+                                                                            <div className="truncate flex-1">
+                                                                                <p className="font-bold truncate">{msg.text.split('/').pop()}</p>
+                                                                                <p className="text-[9px] uppercase font-black opacity-60">Załącznik</p>
+                                                                            </div>
+                                                                            <a 
+                                                                                href={fullFileUrl} 
+                                                                                download 
+                                                                                target="_blank" 
+                                                                                rel="noreferrer"
+                                                                                className={`px-3 py-1.5 rounded-xl font-bold transition-all ${msg.sender === 'tutor' ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600'}`}
+                                                                            >
+                                                                                Pobierz
+                                                                            </a>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <p className={msg.sender === 'tutor' ? 'font-bold' : ''}>{msg.text}</p>
+                                                            )}
+                                                            <span className={`block text-[10px] mt-2 text-right ${msg.sender === 'student' ? 'text-slate-400' : 'text-emerald-100'}`}>{msg.time}</span>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                             <div className="p-8 bg-white border-t border-slate-50">
-                                                <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="relative">
-                                                    <input 
-                                                        type="text" 
-                                                        value={chatInput}
-                                                        onChange={(e) => setChatInput(e.target.value)}
-                                                        placeholder="Napisz do studenta..." 
-                                                        className="w-full p-6 bg-slate-50 rounded-full border-none focus:ring-2 focus:ring-emerald-400 outline-none pr-20 text-slate-800" 
-                                                    />
-                                                    <button 
-                                                        type="submit"
-                                                        className="absolute right-4 top-1/2 -translate-y-1/2 bg-emerald-400 text-white p-4 rounded-full shadow-lg shadow-emerald-100 cursor-pointer"
-                                                    >
-                                                        <Send size={20} />
-                                                    </button>
+                                                <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center gap-3">
+                                                    <label className="flex items-center justify-center p-5 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-emerald-500 rounded-full cursor-pointer transition-all flex-shrink-0 border border-slate-100">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636a9 9 0 0 1 0 12.728l-6.364 6.364a6 6 0 1 1-8.485-8.485l7.071-7.071a4 4 0 0 1 5.657 5.657l-7.071 7.07a2 2 0 0 1-2.828-2.828l6.364-6.364" />
+                                                        </svg>
+                                                        <input 
+                                                            type="file" 
+                                                            onChange={handleAttachFile} 
+                                                            className="hidden" 
+                                                            disabled={isUploadingFile}
+                                                        />
+                                                    </label>
+                                                    <div className="relative flex-1">
+                                                        <input 
+                                                            type="text" 
+                                                            value={chatInput}
+                                                            onChange={handleChatInputChange}
+                                                            placeholder={isUploadingFile ? "Przesyłanie pliku..." : "Napisz do studenta..."} 
+                                                            disabled={isUploadingFile}
+                                                            className="w-full p-6 bg-slate-50 rounded-full border-none focus:ring-2 focus:ring-emerald-400 outline-none pr-20 text-slate-800" 
+                                                        />
+                                                        <button 
+                                                            type="submit"
+                                                            disabled={isUploadingFile}
+                                                            className="absolute right-4 top-1/2 -translate-y-1/2 bg-emerald-400 text-white p-4 rounded-full shadow-lg shadow-emerald-100 cursor-pointer disabled:opacity-50"
+                                                        >
+                                                            <Send size={20} />
+                                                        </button>
+                                                    </div>
                                                 </form>
                                             </div>
                                         </>
@@ -378,103 +1048,450 @@ const TutorDashboard = () => {
                         )}
 
                         {activeTab === 'zarobki' && (
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid gap-8">
-                                <div className="bg-white p-12 rounded-[50px] shadow-sm text-center border border-emerald-50">
-                                    <p className="text-slate-400 font-bold uppercase tracking-widest mb-2">Suma zarobków (Łącznie)</p>
-                                    <h2 className="text-7xl font-black text-emerald-500">{totalEarnings.toFixed(2)} PLN</h2>
-                                    <p className="text-slate-400 text-xs mt-4">
-                                        Zarobki są aktualizowane automatycznie po zakończeniu każdej sesji i potrącane z portfela studenta.
-                                    </p>
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid md:grid-cols-2 gap-8">
+                                <div className="space-y-6">
+                                    <div className="bg-white p-10 rounded-[40px] shadow-sm text-center border border-emerald-50">
+                                        <p className="text-slate-400 font-bold uppercase tracking-widest mb-2 text-xs">Aktualne saldo do wypłaty</p>
+                                        <h2 className="text-5xl font-black text-emerald-500">{totalEarnings.toFixed(2)} PLN</h2>
+                                        <p className="text-slate-450 text-[10px] mt-3 leading-relaxed">
+                                            Środki możesz wypłacić bezpośrednio na swoje polskie konto bankowe. Czas księgowania to zazwyczaj 1 dzień roboczy.
+                                        </p>
+                                    </div>
+
+                                    <div className="bg-white p-10 rounded-[40px] shadow-sm border border-slate-100">
+                                        <h3 className="font-black text-slate-800 text-lg mb-6">Zleć wypłatę</h3>
+                                        <form onSubmit={handleRequestPayout} className="space-y-4">
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Kwota wypłaty (PLN)</label>
+                                                <input 
+                                                    type="number"
+                                                    step="0.01"
+                                                    required
+                                                    min="10"
+                                                    value={payoutAmount}
+                                                    onChange={(e) => setPayoutAmount(e.target.value)}
+                                                    placeholder="np. 50.00"
+                                                    className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm font-bold"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Numer konta IBAN</label>
+                                                <input 
+                                                    type="text"
+                                                    required
+                                                    value={payoutIban}
+                                                    onChange={(e) => setPayoutIban(e.target.value)}
+                                                    placeholder="PL00 0000 0000 0000 0000 0000 0000"
+                                                    className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm font-bold"
+                                                />
+                                            </div>
+                                            <button
+                                                type="submit"
+                                                disabled={isSubmittingPayout}
+                                                className="w-full bg-emerald-400 hover:bg-emerald-500 text-white py-4 rounded-2xl font-black text-sm transition-all shadow-md shadow-emerald-100 cursor-pointer disabled:opacity-50 hover:scale-102"
+                                            >
+                                                {isSubmittingPayout ? "Przetwarzanie..." : "Wypłać środki 💰"}
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-10 rounded-[40px] shadow-sm border border-slate-100 flex flex-col h-[600px] overflow-hidden">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h3 className="font-black text-slate-800 text-lg">
+                                            {earningsSubTab === 'transactions' ? 'Historia transakcji' : 'Historia wypłat'}
+                                        </h3>
+                                        <div className="flex gap-2 bg-slate-50 p-1 rounded-2xl border border-slate-100">
+                                            <button 
+                                                type="button"
+                                                onClick={() => setEarningsSubTab('transactions')}
+                                                className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${earningsSubTab === 'transactions' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-650'}`}
+                                            >
+                                                Transakcje
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                onClick={() => setEarningsSubTab('payouts')}
+                                                className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${earningsSubTab === 'payouts' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-650'}`}
+                                            >
+                                                Wypłaty
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {earningsSubTab === 'transactions' ? (
+                                        isTransactionsLoading ? (
+                                            <div className="flex justify-center py-10 flex-1 items-center">
+                                                <RefreshCw className="animate-spin text-emerald-400" size={24} />
+                                            </div>
+                                        ) : transactions.length === 0 ? (
+                                            <div className="flex-1 flex items-center justify-center text-center">
+                                                <p className="text-slate-400 text-sm font-bold uppercase">Brak zarejestrowanych transakcji</p>
+                                            </div>
+                                        ) : (
+                                            <div className="overflow-y-auto flex-1 space-y-3 pr-2">
+                                                {transactions.map(t => {
+                                                    const isEarnings = t.type === 'earnings';
+                                                    const isPayout = t.type === 'payout';
+                                                    
+                                                    let typeLabel = '';
+                                                    let amountColor = '';
+                                                    let prefix = '';
+                                                    if (isEarnings) {
+                                                        typeLabel = 'Zarobek z lekcji';
+                                                        amountColor = 'text-emerald-500 font-bold';
+                                                        prefix = '+';
+                                                    } else if (isPayout) {
+                                                        typeLabel = 'Wypłata środków';
+                                                        amountColor = 'text-rose-500 font-bold';
+                                                        prefix = '-';
+                                                    } else {
+                                                        typeLabel = t.type;
+                                                        amountColor = 'text-slate-700';
+                                                    }
+
+                                                    return (
+                                                        <div key={t.id} className="p-4 rounded-2xl border border-slate-50 bg-slate-50/20 flex justify-between items-center text-xs">
+                                                            <div>
+                                                                <p className="font-black text-slate-800">{typeLabel}</p>
+                                                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 block">
+                                                                    {new Date(t.timestamp).toLocaleString('pl-PL')}
+                                                                </span>
+                                                            </div>
+                                                            <span className={`font-mono text-sm ${amountColor}`}>
+                                                                {prefix}{Math.abs(t.amount).toFixed(2)} PLN
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )
+                                    ) : (
+                                        isPayoutsLoading ? (
+                                            <div className="flex justify-center py-10 flex-1 items-center">
+                                                <RefreshCw className="animate-spin text-emerald-400" size={24} />
+                                            </div>
+                                        ) : payouts.length === 0 ? (
+                                            <div className="flex-1 flex items-center justify-center text-center">
+                                                <p className="text-slate-400 text-sm font-bold uppercase">Brak wcześniejszych wypłat</p>
+                                            </div>
+                                        ) : (
+                                            <div className="overflow-y-auto flex-1 space-y-3 pr-2">
+                                                {payouts.map(payout => {
+                                                    const isPending = payout.status === 'pending';
+                                                    const isApproved = payout.status === 'approved';
+                                                    
+                                                    let statusLabel = payout.status;
+                                                    let statusStyle = 'bg-slate-100 text-slate-500';
+                                                    if (isPending) {
+                                                        statusLabel = 'Oczekująca';
+                                                        statusStyle = 'bg-amber-100 text-amber-600';
+                                                    } else if (isApproved) {
+                                                        statusLabel = 'Zrealizowana';
+                                                        statusStyle = 'bg-emerald-100 text-emerald-600';
+                                                    }
+                                                    
+                                                    return (
+                                                        <div key={payout.id} className="p-4 rounded-2xl border border-slate-50 bg-slate-50/20 flex justify-between items-center text-xs">
+                                                            <div>
+                                                                <p className="font-black text-slate-800 text-sm">{payout.amount.toFixed(2)} PLN</p>
+                                                                <p className="text-slate-400 text-[10px] font-bold mt-1">Konto: ...{payout.iban ? payout.iban.slice(-6) : ''}</p>
+                                                                <p className="text-slate-400 text-[9px] mt-0.5">{new Date(payout.timestamp).toLocaleDateString('pl-PL')}</p>
+                                                            </div>
+                                                            <span className={`px-2.5 py-1 rounded-full font-black uppercase text-[9px] ${statusStyle}`}>
+                                                                {statusLabel}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )
+                                    )}
                                 </div>
                             </motion.div>
                         )}
 
-                        {activeTab === 'kalendarz' && (
-                            <motion.div 
-                                initial={{ opacity: 0, y: 20 }} 
-                                animate={{ opacity: 1, y: 0 }} 
-                                className="max-w-4xl mx-auto bg-white p-10 rounded-[50px] shadow-sm border border-slate-100 flex flex-col md:flex-row gap-10"
-                            >
-                                {/* Left Column: Calendar Grid */}
-                                <div className="flex-1">
-                                    <div className="flex justify-between items-center mb-6">
-                                        <h3 className="font-black text-xl text-slate-800">Maj 2026</h3>
-                                        <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Planer dostępności</span>
-                                    </div>
-                                    
-                                    {/* Days of Week Header */}
-                                    <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-slate-400 uppercase mb-3">
-                                        <span>Pn</span><span>Wt</span><span>Śr</span><span>Cz</span><span>Pi</span><span>So</span><span>Ni</span>
-                                    </div>
-                                    
-                                    {/* Days Grid (May 2026 starts on Friday, so 4 empty days) */}
-                                    <div className="grid grid-cols-7 gap-2">
-                                        {Array.from({ length: 4 }).map((_, i) => (
-                                            <div key={`empty-${i}`} className="aspect-square"></div>
-                                        ))}
-                                        {Array.from({ length: 31 }).map((_, i) => {
-                                            const day = i + 1;
-                                            const isSelected = selectedDay === day;
-                                            const hasSlots = availableSlots[day] && availableSlots[day].length > 0;
-                                            return (
+                        {activeTab === 'kalendarz' && (() => {
+                            // Calculate calendar dates for currentMonth (Date object)
+                            const POLISH_MONTHS = [
+                                "Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", 
+                                "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"
+                            ];
+                            const year = currentMonth.getFullYear();
+                            const month = currentMonth.getMonth();
+                            const firstDayIndex = new Date(year, month, 1).getDay();
+                            const startOffset = firstDayIndex === 0 ? 6 : firstDayIndex - 1;
+                            const totalDays = new Date(year, month + 1, 0).getDate();
+                            
+                            const getDayDateString = (dayNum) => {
+                                return `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                            };
+
+                            const handlePrevMonth = () => {
+                                setCurrentMonth(new Date(year, month - 1, 1));
+                            };
+                            const handleNextMonth = () => {
+                                setCurrentMonth(new Date(year, month + 1, 1));
+                            };
+
+                            // Bookings for selected date
+                            const selectedDayBookings = bookings.filter(b => b.bookingDate === selectedDateStr);
+                            const selectedDaySlots = availableSlots[selectedDateStr] || [];
+
+                            return (
+                                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+                                    {/* Monthly Calendar Card */}
+                                    <div className="bg-white p-10 rounded-[50px] shadow-sm border border-slate-100">
+                                        <div className="flex justify-between items-center mb-8">
+                                            <div>
+                                                <h3 className="font-black text-2xl text-slate-800 tracking-tight flex items-center gap-2">
+                                                    <Calendar className="text-emerald-500" /> Twój Kalendarz
+                                                </h3>
+                                                <p className="text-xs text-slate-400 mt-1 font-bold uppercase tracking-wider">Miesięczny podgląd zajęć i dostępności</p>
+                                            </div>
+                                            
+                                            {/* Navigation controls */}
+                                            <div className="flex items-center gap-3 bg-slate-50 p-1.5 rounded-full border border-slate-100">
                                                 <button
-                                                    type="button"
-                                                    key={`day-${day}`}
-                                                    onClick={() => setSelectedDay(day)}
-                                                    className={`aspect-square rounded-2xl font-black text-sm transition-all cursor-pointer flex flex-col items-center justify-center relative ${isSelected ? 'bg-emerald-400 text-white shadow-lg shadow-emerald-100 scale-105' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
+                                                    onClick={handlePrevMonth}
+                                                    className="p-2.5 rounded-full hover:bg-white text-slate-500 hover:text-emerald-500 transition-all cursor-pointer animate-none"
                                                 >
-                                                    {day}
-                                                    {hasSlots && !isSelected && (
-                                                        <span className="absolute bottom-1.5 w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
-                                                    )}
+                                                    &larr;
                                                 </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                                
-                                {/* Right Column: Availability Hours */}
-                                <div className="w-full md:w-80 bg-slate-50/50 p-8 rounded-[40px] border border-slate-50 flex flex-col justify-between">
-                                    <div>
-                                        <div className="mb-6">
-                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-1">Wybrany dzień</p>
-                                            <h4 className="font-black text-xl text-slate-800">{selectedDay} Maja 2026</h4>
+                                                <span className="font-black text-slate-800 text-sm px-4 min-w-36 text-center select-none">
+                                                    {POLISH_MONTHS[month]} {year}
+                                                </span>
+                                                <button
+                                                    onClick={handleNextMonth}
+                                                    className="p-2.5 rounded-full hover:bg-white text-slate-500 hover:text-emerald-500 transition-all cursor-pointer animate-none"
+                                                >
+                                                    &rarr;
+                                                </button>
+                                            </div>
                                         </div>
-                                        
-                                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-4">Godziny dostępności</label>
-                                        <div className="space-y-2">
-                                            {["08:00-10:00", "10:00-12:00", "12:00-14:00", "14:00-16:00", "16:00-18:00", "18:00-20:00"].map(slot => {
-                                                const daySlots = availableSlots[selectedDay] || [];
-                                                const isActive = daySlots.includes(slot);
+
+                                        {/* Weekday headers */}
+                                        <div className="grid grid-cols-7 gap-3 text-center text-xs font-bold text-slate-400 uppercase mb-4 tracking-wider">
+                                            <span>Pn</span><span>Wt</span><span>Śr</span><span>Cz</span><span>Pi</span><span>So</span><span>Ni</span>
+                                        </div>
+
+                                        {/* Days Grid */}
+                                        <div className="grid grid-cols-7 gap-3">
+                                            {Array.from({ length: startOffset }).map((_, i) => (
+                                                <div key={`empty-${i}`} className="aspect-square bg-slate-50/20 rounded-2xl border border-transparent"></div>
+                                            ))}
+                                            {Array.from({ length: totalDays }).map((_, i) => {
+                                                const day = i + 1;
+                                                const dateStr = getDayDateString(day);
+                                                const isSelected = selectedDateStr === dateStr;
+                                                
+                                                const dayBookings = bookings.filter(b => b.bookingDate === dateStr);
+                                                const hasScheduled = dayBookings.some(b => b.status === 'scheduled');
+                                                const hasPending = dayBookings.some(b => b.status === 'pending_booking');
+                                                
+                                                const daySlots = availableSlots[dateStr] || [];
+                                                const hasSlots = daySlots.length > 0;
+
+                                                let statusStyle = 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-100/50';
+                                                if (isSelected) {
+                                                    statusStyle = 'bg-emerald-400 text-white border-transparent shadow-lg shadow-emerald-100 scale-105 font-bold';
+                                                } else if (hasScheduled) {
+                                                    statusStyle = 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 font-bold';
+                                                } else if (hasPending) {
+                                                    statusStyle = 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 font-bold';
+                                                } else if (hasSlots) {
+                                                    statusStyle = 'bg-slate-50 text-slate-800 border-emerald-100 border-2 hover:bg-slate-100';
+                                                }
+
                                                 return (
                                                     <button
                                                         type="button"
-                                                        key={slot}
-                                                        onClick={() => {
-                                                            const newSlots = isActive 
-                                                                ? daySlots.filter(s => s !== slot) 
-                                                                : [...daySlots, slot];
-                                                            setAvailableSlots(prev => ({
-                                                                ...prev,
-                                                                [selectedDay]: newSlots
-                                                            }));
-                                                        }}
-                                                        className={`w-full p-4 rounded-2xl text-xs font-bold text-left transition-all border flex justify-between items-center cursor-pointer ${isActive ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}
+                                                        key={`day-${day}`}
+                                                        onClick={() => setSelectedDateStr(dateStr)}
+                                                        className={`aspect-square rounded-3xl border text-sm transition-all cursor-pointer flex flex-col items-center justify-center relative ${statusStyle}`}
                                                     >
-                                                        <span>{slot}</span>
-                                                        <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`}></span>
+                                                        <span className="text-sm font-black">{day}</span>
+                                                        
+                                                        {/* Status Dots */}
+                                                        <div className="flex gap-1 mt-1 justify-center items-center">
+                                                            {hasScheduled && !isSelected && (
+                                                                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                                                            )}
+                                                            {hasPending && !isSelected && (
+                                                                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                                                            )}
+                                                            {hasSlots && !isSelected && !hasScheduled && !hasPending && (
+                                                                <span className="w-1 h-1 bg-emerald-400 rounded-full" />
+                                                            )}
+                                                        </div>
                                                     </button>
                                                 );
                                             })}
                                         </div>
                                     </div>
-                                    
-                                    <div className="mt-8 bg-emerald-50/30 p-4 rounded-2xl border border-emerald-100/30 text-[10px] text-slate-500 leading-relaxed">
-                                        💡 <strong>Wskazówka:</strong> Klikaj na godziny, aby przełączać swój status dostępności. Zielone godziny oznaczają, że jesteś gotowy do lekcji.
+
+                                    {/* Selected Day Details & Planner Section */}
+                                    <div className="flex flex-col lg:flex-row gap-8">
+                                        {/* Column 1: Daily Sessions List */}
+                                        <div className="flex-1 bg-white p-8 rounded-[40px] shadow-sm border border-slate-100">
+                                            <div className="mb-6">
+                                                <span className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-block">
+                                                    Plan dnia
+                                                </span>
+                                                <h4 className="font-black text-xl text-slate-800 mt-2">
+                                                    {new Date(selectedDateStr).toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                                                </h4>
+                                            </div>
+
+                                            {isBookingsLoading ? (
+                                                <div className="flex justify-center py-10">
+                                                    <RefreshCw className="animate-spin text-emerald-400" size={24} />
+                                                </div>
+                                            ) : selectedDayBookings.length === 0 ? (
+                                                <div className="text-center py-12 text-slate-400">
+                                                    <Calendar className="text-slate-200 mx-auto mb-3" size={32} />
+                                                    <p className="font-bold text-xs">Brak zaplanowanych lekcji na ten dzień</p>
+                                                    <p className="text-[10px] mt-1">Uczniowie mogą zarezerwować ten termin, jeśli oznaczysz go jako dostępny.</p>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-4">
+                                                    {selectedDayBookings.map(booking => {
+                                                        const isScheduled = booking.status === 'scheduled';
+                                                        const isPending = booking.status === 'pending_booking';
+                                                        const isDeclined = booking.status === 'declined';
+                                                        const isCanceled = booking.status === 'canceled';
+                                                        
+                                                        let statusLabel = '';
+                                                        let statusStyle = '';
+                                                        if (isScheduled) {
+                                                            statusLabel = 'Zaakceptowana (Zaplanowana)';
+                                                            statusStyle = 'bg-emerald-100 text-emerald-600';
+                                                        } else if (isPending) {
+                                                            statusLabel = 'Oczekuje na Twoją akceptację';
+                                                            statusStyle = 'bg-amber-100 text-amber-600 animate-pulse';
+                                                        } else if (isDeclined) {
+                                                            statusLabel = 'Odrzucona';
+                                                            statusStyle = 'bg-rose-100 text-rose-600';
+                                                        } else if (isCanceled) {
+                                                            statusLabel = 'Anulowana przez ucznia';
+                                                            statusStyle = 'bg-slate-100 text-slate-500';
+                                                        } else {
+                                                            statusLabel = booking.status;
+                                                            statusStyle = 'bg-slate-100 text-slate-700';
+                                                        }
+                                                        
+                                                        return (
+                                                            <div key={booking.id} className="p-5 rounded-3xl border border-slate-100 bg-slate-50/20 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-all hover:bg-slate-50/50">
+                                                                <div>
+                                                                    <div className="flex items-center gap-2 mb-1.5">
+                                                                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase ${statusStyle}`}>
+                                                                            {statusLabel}
+                                                                        </span>
+                                                                        <span className="text-slate-400 font-bold text-[9px] uppercase">
+                                                                            Lekcja #{booking.id ? booking.id.slice(-6) : ''}
+                                                                        </span>
+                                                                    </div>
+                                                                    <h5 className="font-black text-slate-800 text-sm">Student: {booking.studentName || 'Uczeń'} | Przedmiot: {booking.subject}</h5>
+                                                                    <p className="text-[11px] text-slate-500 mt-1 font-bold">
+                                                                        ⏰ Godzina: {booking.bookingTimeSlot} ({booking.approximateTime})
+                                                                    </p>
+                                                                    {booking.taskDescription && (
+                                                                        <p className="text-[10px] text-slate-400 mt-2 bg-white p-2.5 rounded-xl border border-slate-50 italic">
+                                                                            "Problem: {booking.taskDescription}"
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                                
+                                                                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                                                    {isPending && (
+                                                                        <>
+                                                                            <button
+                                                                                onClick={() => handleDeclineBooking(booking.id)}
+                                                                                className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-[10px] font-black transition-all cursor-pointer animate-none"
+                                                                            >
+                                                                                Odrzuć
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => handleAcceptBooking(booking.id)}
+                                                                                className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[10px] font-black transition-all shadow-md shadow-emerald-100 cursor-pointer animate-none"
+                                                                            >
+                                                                                Akceptuj
+                                                                            </button>
+                                                                        </>
+                                                                    )}
+                                                                    {isScheduled && (
+                                                                        <button
+                                                                            onClick={() => handleStartScheduledSession(booking.id)}
+                                                                            className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[10px] font-black transition-all shadow-md shadow-emerald-100 flex items-center gap-1 cursor-pointer animate-none"
+                                                                        >
+                                                                            Połącz 🚀
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Column 2: Hours Availability Planner */}
+                                        <div className="w-full lg:w-80 bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 flex flex-col justify-between">
+                                            <div>
+                                                <div className="mb-6">
+                                                    <span className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-block">
+                                                        Ustaw dostępność
+                                                    </span>
+                                                    <h4 className="font-black text-base text-slate-800 mt-2">Dla wybranej daty</h4>
+                                                </div>
+                                                
+                                                <div className="space-y-2">
+                                                    {["08:00-10:00", "10:00-12:00", "12:00-14:00", "14:00-16:00", "16:00-18:00", "18:00-20:00"].map(slot => {
+                                                        const isActive = selectedDaySlots.includes(slot);
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                key={slot}
+                                                                onClick={async () => {
+                                                                    const newSlots = isActive 
+                                                                        ? selectedDaySlots.filter(s => s !== slot) 
+                                                                        : [...selectedDaySlots, slot];
+                                                                    const updatedSlots = {
+                                                                        ...availableSlots,
+                                                                        [selectedDateStr]: newSlots
+                                                                    };
+                                                                    setAvailableSlots(updatedSlots);
+                                                                    
+                                                                    // Sync to backend immediately
+                                                                    try {
+                                                                        await api.updateProfile({
+                                                                            clerkId: user.id,
+                                                                            name: tutorName,
+                                                                            role: 'tutor',
+                                                                            availableSlots: JSON.stringify(updatedSlots)
+                                                                        });
+                                                                    } catch (err) {
+                                                                        console.error("Error saving availability slots:", err);
+                                                                    }
+                                                                }}
+                                                                className={`w-full p-3.5 rounded-2xl text-[11px] font-bold text-left transition-all border flex justify-between items-center cursor-pointer ${isActive ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-white text-slate-500 border-slate-100 hover:bg-slate-50'}`}
+                                                            >
+                                                                <span>{slot}</span>
+                                                                <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`}></span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="mt-8 bg-emerald-50/30 p-4 rounded-2xl border border-emerald-100/30 text-[10px] text-slate-500 leading-relaxed">
+                                                💡 Klikaj przedziały godzinowe, aby włączyć lub wyłączyć je w wybranej dacie. Zmiany są automatycznie zapisywane w bazie danych.
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </motion.div>
-                        )}
+                                </motion.div>
+                            );
+                        })()}
 
                         {activeTab === 'historia' && (
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
@@ -521,6 +1538,12 @@ const TutorDashboard = () => {
                                                             <Download size={14} /> Nagranie
                                                         </a>
                                                     )}
+                                                    <button 
+                                                        onClick={() => printReceipt(session)}
+                                                        className="p-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-2xl transition-colors shadow-sm flex items-center justify-center gap-2 text-xs font-bold cursor-pointer"
+                                                    >
+                                                        Rachunek PDF 📄
+                                                    </button>
                                                 </div>
                                             </div>
                                         ))}
@@ -601,9 +1624,53 @@ const TutorDashboard = () => {
                                         <textarea
                                             value={tutorBio}
                                             onChange={(e) => setTutorBio(e.target.value)}
-                                            className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm h-32 leading-relaxed resize-none"
+                                            className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm h-32 leading-relaxed resize-none mb-6"
                                             required
                                         />
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">LinkedIn Profil (URL)</label>
+                                            <input
+                                                type="url"
+                                                value={tutorLinkedin}
+                                                onChange={(e) => setTutorLinkedin(e.target.value)}
+                                                placeholder="https://linkedin.com/in/twoj-profil"
+                                                className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Wideo powitalne (YouTube URL)</label>
+                                            <input
+                                                type="url"
+                                                value={tutorVideoGreetingUrl}
+                                                onChange={(e) => setTutorVideoGreetingUrl(e.target.value)}
+                                                placeholder="https://youtube.com/watch?v=..."
+                                                className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Doświadczenie</label>
+                                            <textarea
+                                                value={tutorExperience}
+                                                onChange={(e) => setTutorExperience(e.target.value)}
+                                                placeholder="Opisz swoje doświadczenie w nauczaniu lub pracy zawodowej..."
+                                                className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm h-24 leading-relaxed resize-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Certyfikaty</label>
+                                            <textarea
+                                                value={tutorCertificates}
+                                                onChange={(e) => setTutorCertificates(e.target.value)}
+                                                placeholder="Wypisz swoje certyfikaty, dyplomy, osiągnięcia..."
+                                                className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-100 outline-none text-slate-800 focus:ring-2 focus:ring-emerald-400 text-sm h-24 leading-relaxed resize-none"
+                                            />
+                                        </div>
                                     </div>
 
                                     <button
@@ -636,18 +1703,40 @@ const TutorDashboard = () => {
                         >
                             <div className="absolute inset-0 bg-emerald-400/5 animate-pulse -z-10"></div>
                             
-                            <div className="w-24 h-24 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce">
-                                <Phone size={44} />
+                            <div className="w-20 h-20 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
+                                <Phone size={36} />
                             </div>
-
-                            <h2 className="text-3xl font-black text-slate-800 mb-2">Połączenie przychodzące!</h2>
-                            <p className="text-slate-400 font-bold text-xs uppercase tracking-wider mb-6">Student prosi o konsultację</p>
-
-                            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 mb-8 space-y-2 text-center">
-                                <p className="font-black text-slate-800 text-lg">Sesja #{incomingSession.id.slice(-6)}</p>
-                                <p className="text-sm text-emerald-600 font-bold">Stawka: {(incomingSession.tutorRate || 1.50).toFixed(2)} PLN / min</p>
+ 
+                            <h2 className="text-2xl font-black text-slate-800 mb-1">Nowa prośba o lekcję!</h2>
+                            <p className="text-slate-400 font-bold text-xs uppercase tracking-wider mb-6">Uczeń oczekuje na połączenie</p>
+ 
+                            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 mb-8 text-left space-y-3 text-xs">
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500 font-bold">Uczeń:</span>
+                                    <span className="font-black text-slate-800">
+                                        {incomingSession.studentName ? incomingSession.studentName.split(' ')[0] : 'Uczeń'}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500 font-bold">Przedmiot:</span>
+                                    <span className="font-bold text-slate-800">{incomingSession.subject}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500 font-bold">Czas trwania:</span>
+                                    <span className="font-bold text-slate-800">{incomingSession.approximateTime || '30 min'}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-slate-500 font-bold">Twoja stawka:</span>
+                                    <span className="font-black text-emerald-500">{(incomingSession.tutorRate || 1.50).toFixed(2)} PLN / min</span>
+                                </div>
+                                {incomingSession.taskDescription && (
+                                    <div className="pt-2 border-t border-slate-150">
+                                        <span className="text-slate-500 font-bold block mb-1">Opis problemu:</span>
+                                        <p className="text-slate-600 leading-relaxed italic">"{incomingSession.taskDescription}"</p>
+                                    </div>
+                                )}
                             </div>
-
+ 
                             <div className="flex gap-4">
                                 <button
                                     onClick={handleDeclineCall}
@@ -661,40 +1750,40 @@ const TutorDashboard = () => {
                                     disabled={isRespondingCall}
                                     className="flex-1 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-lg shadow-lg shadow-emerald-500/20 cursor-pointer flex items-center justify-center gap-2"
                                 >
-                                    <Phone size={20} className="animate-spin-slow" /> Odbierz
+                                    <Phone size={20} className="animate-spin-slow" /> Akceptuj i połącz
                                 </button>
                             </div>
                         </motion.div>
                     </div>
                 )}
             </AnimatePresence>
-
-            {/* Student Profile Modal */}
-            <AnimatePresence>
-                {selectedStudent && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-md bg-slate-900/30">
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                            animate={{ scale: 1, opacity: 1, y: 0 }}
-                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                            className="bg-white w-full max-w-md rounded-[50px] p-12 shadow-2xl relative border border-slate-100"
-                        >
-                            <button onClick={() => setSelectedStudent(null)} className="absolute top-8 right-8 p-2.5 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
-                                <X size={24} />
-                            </button>
-                            <div className="text-center">
-                                <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-black text-3xl overflow-hidden shadow-inner mx-auto mb-6">
-                                    {selectedStudent.imageUrl ? (
-                                        <img src={selectedStudent.imageUrl} className="w-full h-full object-cover" />
-                                    ) : (
-                                        selectedStudent.name?.[0]?.toUpperCase() || 'S'
-                                    )}
-                                </div>
-                                <span className="bg-blue-50 text-blue-600 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider mb-4 inline-block">
-                                    Student
-                                </span>
-                                <h3 className="text-2xl font-black text-slate-800 mb-2">{selectedStudent.name}</h3>
-                                <p className="text-slate-400 text-sm mb-6">Uczestnik zajęć na EduMinuta</p>
+ 
+             {/* Student Profile Modal */}
+             <AnimatePresence>
+                 {selectedStudent && (
+                     <div className="fixed inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-md bg-slate-900/30">
+                         <motion.div
+                             initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                             animate={{ scale: 1, opacity: 1, y: 0 }}
+                             exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                             className="bg-white w-full max-w-md rounded-[50px] p-12 shadow-2xl relative border border-slate-100"
+                         >
+                             <button onClick={() => setSelectedStudent(null)} className="absolute top-8 right-8 p-2.5 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                                 <X size={24} />
+                             </button>
+                             <div className="text-center">
+                                 <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-black text-3xl overflow-hidden shadow-inner mx-auto mb-6">
+                                     {selectedStudent.imageUrl ? (
+                                         <img src={selectedStudent.imageUrl} className="w-full h-full object-cover" />
+                                     ) : (
+                                         selectedStudent.name?.[0]?.toUpperCase() || 'S'
+                                     )}
+                                 </div>
+                                 <span className="bg-blue-50 text-blue-600 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider mb-4 inline-block">
+                                     Student
+                                 </span>
+                                 <h3 className="text-2xl font-black text-slate-800 mb-2">{selectedStudent.name}</h3>
+                                 <p className="text-slate-400 text-sm mb-6">Uczestnik zajęć na StudyBuddy</p>
 
                                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 text-left space-y-4">
                                     <div className="flex justify-between items-center text-xs">
@@ -719,6 +1808,137 @@ const TutorDashboard = () => {
                     </div>
                 )}
             </AnimatePresence>
+
+            {/* Notifications drawer */}
+            <AnimatePresence>
+                {isNotificationsOpen && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 0.5 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setIsNotificationsOpen(false)}
+                            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50"
+                        />
+                        <motion.div
+                            initial={{ x: '100%' }}
+                            animate={{ x: 0 }}
+                            exit={{ x: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            className="fixed top-0 right-0 h-full w-full max-w-md bg-white/95 backdrop-blur-xl shadow-2xl z-50 flex flex-col border-l border-slate-100"
+                        >
+                            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                                <div>
+                                    <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+                                        <Bell className="text-emerald-500" /> Powiadomienia
+                                    </h2>
+                                    {notifications.filter(n => !n.read).length > 0 && (
+                                        <p className="text-xs text-rose-500 font-bold uppercase tracking-wider mt-1">
+                                            Masz {notifications.filter(n => !n.read).length} nieprzeczytanych
+                                        </p>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={() => setIsNotificationsOpen(false)}
+                                    className="p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                                {notifications.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
+                                        <Bell size={48} className="text-slate-200 mb-4 animate-bounce" />
+                                        <p className="font-bold">Brak powiadomień</p>
+                                        <p className="text-xs mt-1">Wszystkie powiadomienia systemowe pojawią się tutaj.</p>
+                                    </div>
+                                ) : (
+                                    notifications.map(notif => (
+                                        <div
+                                            key={notif.id}
+                                            onClick={() => !notif.read && handleMarkRead(notif.id)}
+                                            className={`p-4 rounded-3xl border transition-all duration-300 flex gap-3 relative ${
+                                                notif.read 
+                                                    ? 'bg-slate-50/50 border-slate-100 text-slate-500 opacity-75' 
+                                                    : 'bg-white border-emerald-100 text-slate-800 shadow-sm shadow-emerald-50/50 hover:bg-slate-50/30 cursor-pointer hover:border-emerald-200'
+                                            }`}
+                                        >
+                                            {!notif.read && (
+                                                <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                            )}
+                                            
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full">
+                                                        {notif.type}
+                                                    </span>
+                                                </div>
+                                                <h4 className="font-bold text-sm text-slate-800">{notif.title}</h4>
+                                                <p className="text-xs text-slate-500 mt-1 leading-relaxed">{notif.message}</p>
+                                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2 block">
+                                                    {new Date(notif.timestamp).toLocaleString('pl-PL', {
+                                                        day: 'numeric',
+                                                        month: 'short',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            {notifications.some(n => !n.read) && (
+                                <div className="p-6 border-t border-slate-100 bg-slate-50/50">
+                                    <button
+                                        onClick={handleMarkAllRead}
+                                        className="w-full bg-emerald-400 hover:bg-emerald-500 text-white py-3.5 px-6 rounded-[20px] font-bold text-sm shadow-md shadow-emerald-200 transition-all hover:scale-102 cursor-pointer flex items-center justify-center gap-2"
+                                    >
+                                        Oznacz wszystkie jako przeczytane
+                                    </button>
+                                </div>
+                            )}
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+
+            {/* Toasts list */}
+            <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 max-w-sm w-full">
+                <AnimatePresence>
+                    {toasts.map(t => (
+                        <motion.div
+                            key={t.id}
+                            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9, y: -20 }}
+                            transition={{ type: 'spring', damping: 20 }}
+                            className="bg-white/95 backdrop-blur-xl border border-emerald-100 p-5 rounded-[26px] shadow-2xl flex gap-3 relative shadow-emerald-100/30 overflow-hidden"
+                        >
+                            <div className="absolute top-0 left-0 bottom-0 w-2.5 bg-emerald-400" />
+                            
+                            <div className="flex-1 pl-1">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500 block mb-1">
+                                    {t.type}
+                                </span>
+                                <h5 className="font-bold text-slate-800 text-sm">{t.title}</h5>
+                                <p className="text-xs text-slate-500 mt-1">{t.message}</p>
+                            </div>
+                            
+                            <button
+                                onClick={() => {
+                                    setToasts(prev => prev.filter(item => item.id !== t.id));
+                                }}
+                                className="p-1 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors self-start cursor-pointer"
+                            >
+                                <X size={16} />
+                            </button>
+                        </motion.div>
+                    ))}
+                </AnimatePresence>
+            </div>
         </div>
     );
 };

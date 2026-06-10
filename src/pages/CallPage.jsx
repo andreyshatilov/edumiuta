@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PhoneOff, RotateCcw, Pencil, Eraser, RefreshCw, AlertCircle, Star } from 'lucide-react';
+import { PhoneOff, RotateCcw, Pencil, Eraser, RefreshCw, AlertCircle, Star, ArrowUpRight, Minus, Square, Circle, Type, Image as ImageIcon, Undo2, Redo2 } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import DailyIframe from '@daily-co/daily-js';
 import { api } from '../services/api';
@@ -30,7 +30,7 @@ const CallPage = () => {
 
     const [seconds, setSeconds] = useState(0);
     const [pricePerMinute, setPricePerMinute] = useState(1.50);
-    const [activeTool, setActiveTool] = useState('draw'); // draw, erase
+    const [activeTool, setActiveTool] = useState('draw'); // draw, erase, line, arrow, rectangle, circle, text
     const [drawColor, setDrawColor] = useState('#10b981'); // Emerald 500
     const [strokeWidth, setStrokeWidth] = useState(4);
 
@@ -47,14 +47,23 @@ const CallPage = () => {
     const [isJoined, setIsJoined] = useState(false);
     const [callError, setCallError] = useState(null);
 
+    // Undo/Redo States
+    const undoStackRef = useRef([]);
+    const redoStackRef = useRef([]);
+    const [canUndo, setCanUndo] = useState(false);
+    const [canRedo, setCanRedo] = useState(false);
+
     // Refs
     const canvasRef = useRef(null);
     const callContainerRef = useRef(null);
     const callFrameRef = useRef(null);
     const isDrawingRef = useRef(false);
+    const startXRef = useRef(0);
+    const startYRef = useRef(0);
     const lastXRef = useRef(0);
     const lastYRef = useRef(0);
     const wsRef = useRef(null);
+    const savedImageDataRef = useRef(null);
 
     // 1. Load active session detail from DB if not passed
     useEffect(() => {
@@ -109,7 +118,22 @@ const CallPage = () => {
                     if (data.type === 'draw') {
                         drawOnCanvas(data.lastX, data.lastY, data.currentX, data.currentY, data.color, data.strokeWidth, data.tool);
                     } else if (data.type === 'clear') {
+                        const canvas = canvasRef.current;
+                        if (canvas) {
+                            undoStackRef.current.push(canvas.toDataURL());
+                            setCanUndo(true);
+                        }
                         clearLocalCanvas();
+                    } else if (data.type === 'restore') {
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = canvasRef.current;
+                            if (!canvas) return;
+                            const ctx = canvas.getContext('2d');
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        };
+                        img.src = data.dataUrl;
                     }
                 } catch (err) {
                     console.error("Error parsing WebSocket sync message:", err);
@@ -177,7 +201,7 @@ const CallPage = () => {
 
                 frame.on('error', (e) => {
                     console.error("Daily.co Frame Error, auto-falling back to Jitsi Meet:", e);
-                    const roomName = session.dailyRoomUrl.split('/').pop() || `eduminuta_${Date.now()}`;
+                    const roomName = session.dailyRoomUrl.split('/').pop() || `studybuddy_${Date.now()}`;
                     const jitsiUrl = `https://meet.jit.si/${roomName}`;
                     
                     setSession(prev => ({
@@ -200,7 +224,22 @@ const CallPage = () => {
                     if (data.type === 'draw') {
                         drawOnCanvas(data.lastX, data.lastY, data.currentX, data.currentY, data.color, data.strokeWidth, data.tool);
                     } else if (data.type === 'clear') {
+                        const canvas = canvasRef.current;
+                        if (canvas) {
+                            undoStackRef.current.push(canvas.toDataURL());
+                            setCanUndo(true);
+                        }
                         clearLocalCanvas();
+                    } else if (data.type === 'restore') {
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = canvasRef.current;
+                            if (!canvas) return;
+                            const ctx = canvas.getContext('2d');
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        };
+                        img.src = data.dataUrl;
                     }
                 });
 
@@ -208,7 +247,7 @@ const CallPage = () => {
                 await frame.join({ url: roomUrl });
             } catch (err) {
                 console.error("Failed to initialize Daily call frame, auto-falling back to Jitsi Meet:", err);
-                const roomName = session.dailyRoomUrl.split('/').pop() || `eduminuta_${Date.now()}`;
+                const roomName = session.dailyRoomUrl.split('/').pop() || `studybuddy_${Date.now()}`;
                 const jitsiUrl = `https://meet.jit.si/${roomName}`;
                 
                 setSession(prev => ({
@@ -290,18 +329,76 @@ const CallPage = () => {
         ctx.stroke();
     };
 
+    const drawShape = (ctx, tool, startX, startY, endX, endY, color, width) => {
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.globalCompositeOperation = 'source-over';
+        
+        if (tool === 'line') {
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+        } else if (tool === 'arrow') {
+            const angle = Math.atan2(endY - startY, endX - startX);
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            // Arrowhead
+            ctx.lineTo(endX - 15 * Math.cos(angle - Math.PI / 6), endY - 15 * Math.sin(angle - Math.PI / 6));
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(endX - 15 * Math.cos(angle + Math.PI / 6), endY - 15 * Math.sin(angle + Math.PI / 6));
+            ctx.stroke();
+        } else if (tool === 'rectangle') {
+            ctx.rect(startX, startY, endX - startX, endY - startY);
+            ctx.stroke();
+        } else if (tool === 'circle') {
+            const radius = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+            ctx.arc(startX, startY, radius, 0, 2 * Math.PI);
+            ctx.stroke();
+        }
+    };
+
     const startDrawing = (e) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
         
-        isDrawingRef.current = true;
-        
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
         
-        lastXRef.current = clientX - rect.left;
-        lastYRef.current = clientY - rect.top;
+        const currentX = clientX - rect.left;
+        const currentY = clientY - rect.top;
+
+        startXRef.current = currentX;
+        startYRef.current = currentY;
+        lastXRef.current = currentX;
+        lastYRef.current = currentY;
+
+        // Push state for Undo
+        undoStackRef.current.push(canvas.toDataURL());
+        setCanUndo(true);
+        // Clear Redo
+        redoStackRef.current = [];
+        setCanRedo(false);
+
+        const ctx = canvas.getContext('2d');
+        savedImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        // Text tool action triggered on click
+        if (activeTool === 'text') {
+            const text = prompt("Wpisz tekst, który chcesz umieścić na tablicy:");
+            if (text) {
+                ctx.font = `${strokeWidth * 4 + 12}px Inter, sans-serif`;
+                ctx.fillStyle = drawColor;
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.fillText(text, currentX, currentY);
+                broadcastCanvasState(canvas.toDataURL());
+            }
+            isDrawingRef.current = false;
+            return;
+        }
+
+        isDrawingRef.current = true;
     };
 
     const draw = (e) => {
@@ -316,43 +413,63 @@ const CallPage = () => {
         const currentX = clientX - rect.left;
         const currentY = clientY - rect.top;
 
-        // Draw locally
-        drawOnCanvas(lastXRef.current, lastYRef.current, currentX, currentY, drawColor, strokeWidth, activeTool);
+        const ctx = canvas.getContext('2d');
 
-        // Broadcast to Peer over Daily.co WebRTC Data Channel
-        if (callFrameRef.current) {
-            callFrameRef.current.sendAppMessage({
-                type: 'draw',
-                lastX: lastXRef.current,
-                lastY: lastYRef.current,
-                currentX,
-                currentY,
-                color: drawColor,
-                strokeWidth,
-                tool: activeTool
-            }, '*');
+        if (['line', 'arrow', 'rectangle', 'circle'].includes(activeTool)) {
+            // Restore snapshot
+            if (savedImageDataRef.current) {
+                ctx.putImageData(savedImageDataRef.current, 0, 0);
+            }
+            // Draw shape preview
+            drawShape(ctx, activeTool, startXRef.current, startYRef.current, currentX, currentY, drawColor, strokeWidth);
+        } else if (activeTool === 'draw' || activeTool === 'erase') {
+            // Draw freehand
+            drawOnCanvas(lastXRef.current, lastYRef.current, currentX, currentY, drawColor, strokeWidth, activeTool);
+
+            // Broadcast to Peer over Daily.co WebRTC Data Channel
+            if (callFrameRef.current) {
+                callFrameRef.current.sendAppMessage({
+                    type: 'draw',
+                    lastX: lastXRef.current,
+                    lastY: lastYRef.current,
+                    currentX,
+                    currentY,
+                    color: drawColor,
+                    strokeWidth,
+                    tool: activeTool
+                }, '*');
+            }
+
+            // Broadcast to Peer over WebSocket fallback
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                wsRef.current.send(JSON.stringify({
+                    type: 'draw',
+                    lastX: lastXRef.current,
+                    lastY: lastYRef.current,
+                    currentX,
+                    currentY,
+                    color: drawColor,
+                    strokeWidth,
+                    tool: activeTool
+                }));
+            }
+            
+            lastXRef.current = currentX;
+            lastYRef.current = currentY;
         }
-
-        // Broadcast to Peer over WebSocket fallback
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
-                type: 'draw',
-                lastX: lastXRef.current,
-                lastY: lastYRef.current,
-                currentX,
-                currentY,
-                color: drawColor,
-                strokeWidth,
-                tool: activeTool
-            }));
-        }
-
-        lastXRef.current = currentX;
-        lastYRef.current = currentY;
     };
 
     const stopDrawing = () => {
+        if (!isDrawingRef.current) return;
         isDrawingRef.current = false;
+        
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        // If shape was drawn, broadcast final canvas state
+        if (['line', 'arrow', 'rectangle', 'circle'].includes(activeTool)) {
+            broadcastCanvasState(canvas.toDataURL());
+        }
     };
 
     const clearLocalCanvas = () => {
@@ -363,6 +480,13 @@ const CallPage = () => {
     };
 
     const handleClearCanvas = () => {
+        const canvas = canvasRef.current;
+        if (canvas) {
+            undoStackRef.current.push(canvas.toDataURL());
+            setCanUndo(true);
+            redoStackRef.current = [];
+            setCanRedo(false);
+        }
         clearLocalCanvas();
         // Broadcast clear
         if (callFrameRef.current) {
@@ -370,6 +494,105 @@ const CallPage = () => {
         }
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({ type: 'clear' }));
+        }
+    };
+
+    const handleUndo = () => {
+        const canvas = canvasRef.current;
+        if (!canvas || undoStackRef.current.length === 0) return;
+
+        const currentState = canvas.toDataURL();
+        redoStackRef.current.push(currentState);
+        setCanRedo(true);
+
+        const prevState = undoStackRef.current.pop();
+        setCanUndo(undoStackRef.current.length > 0);
+
+        const img = new Image();
+        img.onload = () => {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            broadcastCanvasState(prevState);
+        };
+        img.src = prevState;
+    };
+
+    const handleRedo = () => {
+        const canvas = canvasRef.current;
+        if (!canvas || redoStackRef.current.length === 0) return;
+
+        const currentState = canvas.toDataURL();
+        undoStackRef.current.push(currentState);
+        setCanUndo(true);
+
+        const nextState = redoStackRef.current.pop();
+        setCanRedo(redoStackRef.current.length > 0);
+
+        const img = new Image();
+        img.onload = () => {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            broadcastCanvasState(nextState);
+        };
+        img.src = nextState;
+    };
+
+    const handleUploadBackground = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const result = await api.uploadWhiteboardBackground(formData);
+            const imageUrl = result.url;
+
+            const canvas = canvasRef.current;
+            if (canvas) {
+                undoStackRef.current.push(canvas.toDataURL());
+                setCanUndo(true);
+                redoStackRef.current = [];
+                setCanRedo(false);
+            }
+
+            let apiHost = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+            if (apiHost.endsWith('/api')) {
+                apiHost = apiHost.slice(0, -4);
+            } else if (apiHost.endsWith('/')) {
+                apiHost = apiHost.slice(0, -1);
+            }
+            const fullImageUrl = `${apiHost}${imageUrl}`;
+
+            drawBackgroundOnCanvas(fullImageUrl);
+        } catch (err) {
+            console.error("Error uploading background:", err);
+            alert("Nie udało się załadować obrazu tła.");
+        }
+    };
+
+    const drawBackgroundOnCanvas = (url) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            broadcastCanvasState(canvas.toDataURL());
+        };
+        img.src = url;
+    };
+
+    const broadcastCanvasState = (dataUrl) => {
+        const msg = { type: 'restore', dataUrl };
+        if (callFrameRef.current) {
+            callFrameRef.current.sendAppMessage(msg, '*');
+        }
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify(msg));
         }
     };
 
@@ -432,7 +655,7 @@ const CallPage = () => {
             {/* Top Bar */}
             <header className="h-20 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <span className="text-xl font-black text-emerald-400 tracking-tighter">EduMinuta</span>
+                    <span className="text-xl font-black text-emerald-400 tracking-tighter">StudyBuddy</span>
                     <span className="bg-slate-800 text-xs px-3 py-1 rounded-full text-slate-400 font-bold uppercase tracking-wider">
                         Sesja: #{sessionId?.slice(-6) || 'Aktywna'}
                     </span>
@@ -463,35 +686,112 @@ const CallPage = () => {
                 {/* 1. Whiteboard Canvas (Left) */}
                 <div className="flex-1 bg-white flex flex-col relative overflow-hidden">
                     {/* Toolbar */}
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/90 text-slate-200 px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 z-10 border border-slate-800">
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/90 text-slate-200 px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 z-10 border border-slate-800 max-w-[95%] overflow-x-auto">
                         <button 
                             onClick={() => setActiveTool('draw')}
                             className={`p-2 rounded-xl transition-all cursor-pointer ${activeTool === 'draw' ? 'bg-emerald-500 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}
                             title="Ołówek"
                         >
-                            <Pencil size={20} />
+                            <Pencil size={18} />
                         </button>
                         <button 
                             onClick={() => setActiveTool('erase')}
                             className={`p-2 rounded-xl transition-all cursor-pointer ${activeTool === 'erase' ? 'bg-emerald-500 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}
                             title="Gumka"
                         >
-                            <Eraser size={20} />
+                            <Eraser size={18} />
+                        </button>
+
+                        <div className="w-px h-6 bg-slate-800"></div>
+
+                        {/* Shape Tools */}
+                        <button 
+                            onClick={() => setActiveTool('line')}
+                            className={`p-2 rounded-xl transition-all cursor-pointer ${activeTool === 'line' ? 'bg-emerald-500 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}
+                            title="Prosta linia"
+                        >
+                            <Minus size={18} />
+                        </button>
+                        <button 
+                            onClick={() => setActiveTool('arrow')}
+                            className={`p-2 rounded-xl transition-all cursor-pointer ${activeTool === 'arrow' ? 'bg-emerald-500 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}
+                            title="Strzałka"
+                        >
+                            <ArrowUpRight size={18} />
+                        </button>
+                        <button 
+                            onClick={() => setActiveTool('rectangle')}
+                            className={`p-2 rounded-xl transition-all cursor-pointer ${activeTool === 'rectangle' ? 'bg-emerald-500 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}
+                            title="Prostokąt"
+                        >
+                            <Square size={18} />
+                        </button>
+                        <button 
+                            onClick={() => setActiveTool('circle')}
+                            className={`p-2 rounded-xl transition-all cursor-pointer ${activeTool === 'circle' ? 'bg-emerald-500 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}
+                            title="Koło"
+                        >
+                            <Circle size={18} />
+                        </button>
+                        <button 
+                            onClick={() => setActiveTool('text')}
+                            className={`p-2 rounded-xl transition-all cursor-pointer ${activeTool === 'text' ? 'bg-emerald-500 text-white shadow-lg' : 'hover:bg-slate-800 text-slate-400'}`}
+                            title="Tekst"
+                        >
+                            <Type size={18} />
+                        </button>
+
+                        <div className="w-px h-6 bg-slate-800"></div>
+
+                        {/* Background Upload */}
+                        <label 
+                            className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 transition-all cursor-pointer flex items-center justify-center" 
+                            title="Wgraj obraz tła"
+                        >
+                            <ImageIcon size={18} />
+                            <input 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={handleUploadBackground} 
+                                className="hidden" 
+                            />
+                        </label>
+
+                        <div className="w-px h-6 bg-slate-800"></div>
+
+                        {/* Undo & Redo */}
+                        <button 
+                            onClick={handleUndo}
+                            disabled={!canUndo}
+                            className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 transition-all disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
+                            title="Cofnij"
+                        >
+                            <Undo2 size={18} />
+                        </button>
+                        <button 
+                            onClick={handleRedo}
+                            disabled={!canRedo}
+                            className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 transition-all disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer"
+                            title="Ponów"
+                        >
+                            <Redo2 size={18} />
                         </button>
 
                         <div className="w-px h-6 bg-slate-800"></div>
 
                         {/* Drawing Colors */}
-                        <div className="flex gap-2">
+                        <div className="flex gap-1.5">
                             {['#10b981', '#3b82f6', '#ef4444', '#f59e0b', '#000000'].map(color => (
                                 <button
                                     key={color}
                                     onClick={() => {
                                         setDrawColor(color);
-                                        setActiveTool('draw');
+                                        if (['erase'].includes(activeTool)) {
+                                            setActiveTool('draw');
+                                        }
                                     }}
                                     style={{ backgroundColor: color }}
-                                    className={`w-6 h-6 rounded-full border-2 transition-all cursor-pointer ${drawColor === color && activeTool === 'draw' ? 'border-white scale-125 shadow-md' : 'border-transparent'}`}
+                                    className={`w-5.5 h-5.5 rounded-full border-2 transition-all cursor-pointer ${drawColor === color && activeTool !== 'erase' ? 'border-white scale-120 shadow-md' : 'border-transparent'}`}
                                 />
                             ))}
                         </div>
@@ -504,7 +804,7 @@ const CallPage = () => {
                             className="p-2 rounded-xl hover:bg-slate-850 text-slate-400 transition-all cursor-pointer"
                             title="Wyczyść tablicę"
                         >
-                            <RotateCcw size={18} />
+                            <RotateCcw size={16} />
                         </button>
                     </div>
 

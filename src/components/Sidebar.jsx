@@ -10,6 +10,7 @@ const Sidebar = ({ role, activeTab, setActiveTab }) => {
         { id: 'szukaj', label: 'Szukaj', icon: <Search size={20} /> },
         { id: 'portfel', label: 'Portfel', icon: <Wallet size={20} /> },
         { id: 'czat', label: 'Czaty', icon: <MessageSquare size={20} /> },
+        { id: 'kalendarz', label: 'Kalendarz', icon: <Calendar size={20} /> },
         { id: 'historia', label: 'Historia', icon: <Clock size={20} /> },
         { id: 'profil', label: 'Profil', icon: <User size={20} /> },
     ] : [
@@ -24,7 +25,7 @@ const Sidebar = ({ role, activeTab, setActiveTab }) => {
 
     return (
         <aside className="w-72 bg-white border-r border-slate-100 p-6 hidden md:flex flex-col h-screen sticky top-0">
-            <Link to="/" className="text-2xl font-black text-emerald-500 mb-10 px-4 tracking-tighter">EduMinuta</Link>
+            <Link to="/" className="text-2xl font-black text-emerald-500 mb-10 px-4 tracking-tighter">StudyBuddy</Link>
             <nav className="space-y-2 flex-1">
                 {menuItems.map(item => (
                     <button
@@ -39,6 +40,11 @@ const Sidebar = ({ role, activeTab, setActiveTab }) => {
                     </button>
                 ))}
             </nav>
+            <div className="px-4 py-3 border-t border-slate-100 my-4 space-y-1.5">
+                <Link to="/about" className="block text-[11px] font-bold text-slate-400 hover:text-emerald-500 transition-colors">O nas 🚀</Link>
+                <Link to="/newsletter" className="block text-[11px] font-bold text-slate-400 hover:text-emerald-500 transition-colors">Newsletter ✉️</Link>
+                <Link to="/privacy" className="block text-[11px] font-bold text-slate-400 hover:text-emerald-500 transition-colors">Polityka prywatności 🔒</Link>
+            </div>
             <div className="p-4 bg-slate-50 rounded-3xl mt-auto">
                 <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
