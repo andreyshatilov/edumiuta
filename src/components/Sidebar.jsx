@@ -53,8 +53,6 @@ const Sidebar = ({ role, activeTab, setActiveTab }) => {
                 })}
             </nav>
             <div className="px-4 py-3 border-t border-slate-100 my-4 space-y-1.5">
-                <Link to="/about" className="block text-[11px] font-bold text-slate-400 hover:text-emerald-500 transition-colors">O nas 🚀</Link>
-                <Link to="/newsletter" className="block text-[11px] font-bold text-slate-400 hover:text-emerald-500 transition-colors">Newsletter ✉️</Link>
                 <Link to="/privacy" className="block text-[11px] font-bold text-slate-400 hover:text-emerald-500 transition-colors">Polityka prywatności 🔒</Link>
             </div>
             <div className="p-4 bg-slate-50 rounded-3xl mt-auto">

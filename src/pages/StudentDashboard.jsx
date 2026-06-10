@@ -142,6 +142,7 @@ const StudentDashboard = () => {
     const [blikCode, setBlikCode] = useState('');
     const [blikStep, setBlikStep] = useState('input'); // input, processing, success
     const [searchQuery, setSearchQuery] = useState('');
+    const [hoveredSpendingBar, setHoveredSpendingBar] = useState(null);
     const [sortBy, setSortBy] = useState('rating'); // rating, price-asc, price-desc
     const navigate = useNavigate();
 
@@ -1223,45 +1224,129 @@ const StudentDashboard = () => {
                                 transition={{ duration: 0.25 }}
                                 className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 w-full"
                             >
-                                {/* Left Column: BLIK Top up */}
-                                <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 h-fit">
-                                    <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2">
-                                        <Wallet className="text-emerald-500" /> Doładuj portfel
-                                    </h2>
-                                    <div className="space-y-6">
-                                        <div className="p-6 bg-slate-50 rounded-3xl text-center">
-                                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Dostępne środki</p>
-                                            <p className="text-4xl font-black text-slate-800">{walletBalance.toFixed(2)} PLN</p>
+                                {/* Left Column: BLIK Top up & Stats */}
+                                <div className="space-y-6">
+                                    <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 h-fit">
+                                        <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2">
+                                            <Wallet className="text-emerald-500" /> Doładuj portfel
+                                        </h2>
+                                        <div className="space-y-6">
+                                            <div className="p-6 bg-slate-50 rounded-3xl text-center">
+                                                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Dostępne środki</p>
+                                                <p className="text-4xl font-black text-slate-800">{walletBalance.toFixed(2)} PLN</p>
+                                            </div>
+                                            
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Wybierz kwotę doładowania</label>
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    {[20, 50, 100].map(amount => (
+                                                        <button 
+                                                            key={amount} 
+                                                            onClick={() => setSelectedDeposit(amount)}
+                                                            className={`py-4 rounded-2xl font-black text-lg transition-all border cursor-pointer ${selectedDeposit === amount ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-100' : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100'}`}
+                                                        >
+                                                            {amount} zł
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <button 
+                                                onClick={() => {
+                                                    setShowBlikModal(true);
+                                                    setBlikStep('input');
+                                                    setBlikCode('');
+                                                }}
+                                                disabled={isDepositing}
+                                                className="w-full bg-emerald-400 text-white py-5 rounded-2xl font-black text-xl hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-100 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                                            >
+                                                Doładuj {selectedDeposit} PLN przez BLIK
+                                            </button>
+                                        </div>
+                                    </motion.div>
+
+                                    {/* Statystyki wydatków */}
+                                    <motion.div 
+                                        initial={{ opacity: 0, y: 20 }} 
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.1 }}
+                                        className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100"
+                                    >
+                                        <div className="flex justify-between items-center mb-6">
+                                            <h3 className="font-black text-slate-800 text-lg flex items-center gap-2">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 3.055A9.003 9.003 0 1020.945 13H11V3.055z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                                                </svg>
+                                                Statystyki wydatków
+                                            </h3>
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-100">7 dni</span>
                                         </div>
                                         
-                                        <div>
-                                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Wybierz kwotę doładowania</label>
-                                            <div className="grid grid-cols-3 gap-3">
-                                                {[20, 50, 100].map(amount => (
-                                                    <button 
-                                                        key={amount} 
-                                                        onClick={() => setSelectedDeposit(amount)}
-                                                        className={`py-4 rounded-2xl font-black text-lg transition-all border cursor-pointer ${selectedDeposit === amount ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-100' : 'bg-slate-50 text-slate-600 border-slate-100 hover:bg-slate-100'}`}
-                                                    >
-                                                        {amount} zł
-                                                    </button>
-                                                ))}
+                                        <div className="relative pt-6 pb-2 px-2">
+                                            <div className="h-6 mb-4 flex justify-center items-center">
+                                                <AnimatePresence>
+                                                    {hoveredSpendingBar !== null ? (
+                                                        <motion.div
+                                                            initial={{ opacity: 0, y: 5, scale: 0.9 }}
+                                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                            exit={{ opacity: 0, y: 5, scale: 0.9 }}
+                                                            className="bg-slate-900 text-white px-3.5 py-1 rounded-xl text-[10px] font-black tracking-wider uppercase shadow-lg shadow-slate-900/10 flex items-center gap-1.5"
+                                                        >
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                                            Wydatki: <span className="text-emerald-400">{hoveredSpendingBar.amount.toFixed(2)} PLN</span>
+                                                        </motion.div>
+                                                    ) : (
+                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Najedź na słupek, by zobaczyć szczegóły</span>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+
+                                            <div className="flex justify-between items-end h-[120px] px-2 relative border-b border-slate-100 pb-2">
+                                                {[
+                                                    { day: 'Pon', amount: 45.00 },
+                                                    { day: 'Wt', amount: 0.00 },
+                                                    { day: 'Śr', amount: 90.00 },
+                                                    { day: 'Czw', amount: 30.00 },
+                                                    { day: 'Pt', amount: 120.00 },
+                                                    { day: 'Sob', amount: 0.00 },
+                                                    { day: 'Niedz', amount: 15.00 }
+                                                ].map((d, index) => {
+                                                    const maxSpending = 120;
+                                                    const pct = d.amount > 0 ? (d.amount / maxSpending) * 100 : 4;
+                                                    return (
+                                                        <div 
+                                                            key={index} 
+                                                            className="flex flex-col items-center flex-1 group"
+                                                            onMouseEnter={() => setHoveredSpendingBar(d)}
+                                                            onMouseLeave={() => setHoveredSpendingBar(null)}
+                                                        >
+                                                            <div className="w-full flex justify-center px-1">
+                                                                <motion.div 
+                                                                    initial={{ height: 0 }}
+                                                                    animate={{ height: `${(pct / 100) * 100}px` }}
+                                                                    transition={{ type: "spring", stiffness: 100, delay: index * 0.05 }}
+                                                                    className={`w-7 sm:w-8 rounded-t-xl transition-all duration-300 relative overflow-hidden ${
+                                                                        d.amount > 0 
+                                                                            ? 'bg-gradient-to-t from-emerald-400 to-emerald-300 shadow-md shadow-emerald-100 group-hover:from-emerald-500 group-hover:to-emerald-400' 
+                                                                            : 'bg-slate-100 group-hover:bg-slate-200'
+                                                                    }`}
+                                                                >
+                                                                    {d.amount > 0 && (
+                                                                        <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%,transparent)] bg-[length:8px_8px] opacity-20 animate-[pulse_2s_infinite]"></div>
+                                                                    )}
+                                                                </motion.div>
+                                                            </div>
+                                                            <span className="text-[10px] font-bold text-slate-400 mt-2.5 transition-colors group-hover:text-emerald-500 select-none">
+                                                                {d.day}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
-
-                                        <button 
-                                            onClick={() => {
-                                                setShowBlikModal(true);
-                                                setBlikStep('input');
-                                                setBlikCode('');
-                                            }}
-                                            disabled={isDepositing}
-                                            className="w-full bg-emerald-400 text-white py-5 rounded-2xl font-black text-xl hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-100 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
-                                        >
-                                            Doładuj {selectedDeposit} PLN przez BLIK
-                                        </button>
-                                    </div>
-                                </motion.div>
+                                    </motion.div>
+                                </div>
 
                                 {/* Right Column: Transaction Logs */}
                                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 flex flex-col">
